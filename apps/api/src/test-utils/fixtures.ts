@@ -24,7 +24,7 @@ export async function createTestApp(teamId: string) {
       name: slug,
       slug,
       teamId,
-      repoUrl: "https://github.com/acme/test-app",
+      repoUrl: `https://github.com/acme/${slug}`,
       namespace: slug,
       subdomain: `${slug}.apps.internal.co`,
     })

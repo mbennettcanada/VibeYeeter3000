@@ -32,6 +32,7 @@ export interface CreateAppRequest {
 }
 export interface CreateAppResponse {
   app: App;
+  warnings?: string[];
 }
 
 // PATCH /apps/:id
@@ -49,9 +50,29 @@ export interface ListDeploymentsResponse {
   deployments: Deployment[];
 }
 
+// POST /apps/:id/deployments
+export interface CreateDeploymentRequest {
+  imageTag: string;
+}
+export interface CreateDeploymentResponse {
+  deployment: Deployment;
+  warnings?: string[];
+}
+
 // POST /apps/:id/deployments/:deploymentId/rollback
 export interface RollbackDeploymentResponse {
   deployment: Deployment;
+  warnings?: string[];
+}
+
+// GET /apps/:id/pods
+export interface ListPodsResponse {
+  pods: Pod[];
+}
+
+// GET /apps/:id/pods/:podName/logs
+export interface GetPodLogsResponse {
+  logs: string;
 }
 
 // GET /apps/:id/migrations

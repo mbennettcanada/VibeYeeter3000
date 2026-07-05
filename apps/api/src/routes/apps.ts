@@ -9,6 +9,14 @@ import { slugify } from "../lib/slug.js";
 import { hasGithubAppConfig } from "../config.js";
 import { parseGithubRepoUrl } from "../lib/github-url.js";
 import { renderClaudeMdTemplate } from "../lib/claude-md-template.js";
+import {
+  isKubernetesConfigured,
+  ensureNamespace,
+  ensureService,
+  ensureIngress,
+  deleteNamespace,
+  listPods,
+} from "../services/kubernetes.js";
 
 const createAppSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -78,6 +86,15 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    let pods: Awaited<ReturnType<typeof listPods>> = [];
+    if (isKubernetesConfigured()) {
+      try {
+        pods = await listPods(row.apps.id);
+      } catch (error) {
+        request.log.error(error);
+      }
+    }
+
     reply.send({
       app: {
         id: row.apps.id,
@@ -91,8 +108,7 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
         updatedAt: row.apps.updatedAt.toISOString(),
         teamName: row.teams.name,
       },
-      // TODO: populate with live pod status once the Kubernetes service is wired up
-      pods: [],
+      pods,
     });
   });
 
@@ -147,6 +163,21 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
           request.log.error(error);
           warnings.push(
             `GitHub repo provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+      }
+
+      if (!isKubernetesConfigured()) {
+        warnings.push("Kubernetes is not configured — skipped namespace/service/ingress provisioning.");
+      } else {
+        try {
+          await ensureNamespace(created.id);
+          await ensureService(created.id);
+          await ensureIngress(created.id, subdomain);
+        } catch (error) {
+          request.log.error(error);
+          warnings.push(
+            `Kubernetes provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
           );
         }
       }
@@ -237,6 +268,18 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       await db.update(apps).set({ deletedAt: new Date() }).where(eq(apps.id, id));
+
+      if (isKubernetesConfigured()) {
+        try {
+          await deleteNamespace(id);
+        } catch (error) {
+          // Best-effort: the app record is already soft-deleted, and a
+          // stranded namespace can be cleaned up manually — don't fail the
+          // request over it.
+          request.log.error(error);
+        }
+      }
+
       reply.code(204).send();
     } catch (error) {
       request.log.error(error);

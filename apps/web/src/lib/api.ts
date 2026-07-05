@@ -6,7 +6,11 @@ import type {
   UpdateAppRequest,
   UpdateAppResponse,
   ListDeploymentsResponse,
+  CreateDeploymentRequest,
+  CreateDeploymentResponse,
   RollbackDeploymentResponse,
+  ListPodsResponse,
+  GetPodLogsResponse,
   ListSecretsResponse,
   CreateSecretRequest,
   CreateSecretResponse,
@@ -69,11 +73,31 @@ export function listDeployments(appId: string): Promise<ListDeploymentsResponse>
   return apiFetch(`/apps/${appId}/deployments`);
 }
 
+export function createDeployment(
+  appId: string,
+  body: CreateDeploymentRequest,
+): Promise<CreateDeploymentResponse> {
+  return apiFetch(`/apps/${appId}/deployments`, { method: "POST", body: JSON.stringify(body) });
+}
+
 export function rollbackDeployment(
   appId: string,
   deploymentId: string,
 ): Promise<RollbackDeploymentResponse> {
   return apiFetch(`/apps/${appId}/deployments/${deploymentId}/rollback`, { method: "POST" });
+}
+
+export function listPods(appId: string): Promise<ListPodsResponse> {
+  return apiFetch(`/apps/${appId}/pods`);
+}
+
+export function getPodLogs(
+  appId: string,
+  podName: string,
+  lines?: number,
+): Promise<GetPodLogsResponse> {
+  const query = lines ? `?lines=${lines}` : "";
+  return apiFetch(`/apps/${appId}/pods/${podName}/logs${query}`);
 }
 
 export function listSecrets(appId: string): Promise<ListSecretsResponse> {

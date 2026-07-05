@@ -1,4 +1,5 @@
 import "./env.js";
+import { isKubernetesConfigured } from "./services/kubernetes.js";
 
 function required(name: string, fallback: string): string {
   const value = process.env[name];
@@ -63,6 +64,12 @@ export function logOptionalIntegrationWarnings(logger: {
   if (!hasSamlConfig) {
     logger.warn(
       "JumpCloud SAML is not configured (JUMPCLOUD_SAML_CERT / SAML_SP_ENTITY_ID / SAML_CALLBACK_URL) — /saml/* routes will not function. Use DEV_AUTH_BYPASS=true for local development.",
+    );
+  }
+
+  if (!isKubernetesConfigured()) {
+    logger.warn(
+      "No kubeconfig found (KUBECONFIG env var or ~/.kube/config) — Kubernetes-backed routes (deployments, pods, logs, namespace provisioning) will fail until one is configured.",
     );
   }
 }

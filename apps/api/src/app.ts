@@ -8,6 +8,7 @@ import { healthRoutes } from "./routes/health.js";
 import { samlRoutes } from "./routes/saml.js";
 import { appsRoutes } from "./routes/apps.js";
 import { deploymentsRoutes } from "./routes/deployments.js";
+import { podsRoutes } from "./routes/pods.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { terraformRoutes } from "./routes/terraform.js";
 import { webhooksRoutes } from "./routes/webhooks.js";
@@ -33,6 +34,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(samlRoutes);
   await app.register(appsRoutes);
   await app.register(deploymentsRoutes);
+  await app.register(podsRoutes);
   await app.register(secretsRoutes);
   await app.register(terraformRoutes);
   await app.register(webhooksRoutes);

@@ -1,7 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildApp } from "../app.js";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createTestTeam, createTestApp, cleanupApp, cleanupTeam } from "../test-utils/fixtures.js";
 import type { FastifyInstance } from "fastify";
+
+// This machine may have a real ~/.kube/config, which would otherwise make
+// isKubernetesConfigured() true and send these tests through real (slow,
+// failing) cluster calls. Kubernetes behavior itself is covered by
+// services/kubernetes.test.ts and routes/deployments.test.ts — here we just
+// force the "not configured" branch so app creation/deletion stay fast and
+// host-independent.
+vi.mock("../services/kubernetes.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/kubernetes.js")>();
+  return { ...actual, isKubernetesConfigured: () => false };
+});
+
+const { buildApp } = await import("../app.js");
 
 describe("apps routes", () => {
   let app: FastifyInstance;
