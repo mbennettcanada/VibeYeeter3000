@@ -1,0 +1,1 @@
+ALTER TABLE "deployments" ADD COLUMN "github_deployment_id" integer;

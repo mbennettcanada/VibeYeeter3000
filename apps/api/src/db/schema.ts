@@ -45,6 +45,10 @@ export const deployments = pgTable("deployments", {
   triggeredBy: text("triggered_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   duration: integer("duration"),
+  // GitHub's numeric deployment id, set once we call the Deployments API for
+  // this row. Used to reconcile inbound deployment_status webhooks back to
+  // the right row. Null until that call happens (see webhook push handler).
+  githubDeploymentId: integer("github_deployment_id"),
 });
 
 export const tfRuns = pgTable("tf_runs", {

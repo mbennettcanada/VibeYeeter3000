@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import session from "@fastify/session";
 import { config, logOptionalIntegrationWarnings } from "./config.js";
+import { registerRawBodyCapture } from "./plugins/raw-body.js";
 import { healthRoutes } from "./routes/health.js";
 import { samlRoutes } from "./routes/saml.js";
 import { appsRoutes } from "./routes/apps.js";
@@ -19,6 +20,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   logOptionalIntegrationWarnings(app.log);
+  registerRawBodyCapture(app);
 
   await app.register(cors);
   await app.register(cookie);

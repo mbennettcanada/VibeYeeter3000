@@ -25,7 +25,9 @@ export const config = {
   github: {
     appId: process.env.GITHUB_APP_ID,
     privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
+    installationId: process.env.GITHUB_APP_INSTALLATION_ID,
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+    org: process.env.GITHUB_ORG ?? "acme",
   },
   saml: {
     cert: process.env.JUMPCLOUD_SAML_CERT,
@@ -35,7 +37,10 @@ export const config = {
 };
 
 export const hasGithubAppConfig = Boolean(
-  config.github.appId && config.github.privateKey && config.github.webhookSecret,
+  config.github.appId &&
+    config.github.privateKey &&
+    config.github.installationId &&
+    config.github.webhookSecret,
 );
 
 export const hasSamlConfig = Boolean(
@@ -51,7 +56,7 @@ export function logOptionalIntegrationWarnings(logger: {
 
   if (!hasGithubAppConfig) {
     logger.warn(
-      "GitHub App credentials are not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY / GITHUB_WEBHOOK_SECRET) — webhook and repo-op routes will not function.",
+      "GitHub App credentials are not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY / GITHUB_APP_INSTALLATION_ID / GITHUB_WEBHOOK_SECRET) — webhook and repo-op routes will not function.",
     );
   }
 

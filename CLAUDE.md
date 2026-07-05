@@ -120,7 +120,8 @@ GitHub App integration:
 - File generation (workflow templates, Dockerfile, helm values, backend.tf)
 - Repo operations (push files, open PRs, create deployments)
 
-Uses the `@octokit/app` library with the vibeyeeter-bot private key.
+Uses `@octokit/auth-app` + `@octokit/rest` with the vibeyeeter-bot private key,
+via the singleton `getOctokit()` in `client.ts`.
 
 ### `services/tf-runner`
 
@@ -200,8 +201,10 @@ Tables:
 DATABASE_URL=                        # Platform's own Postgres
 JWT_SECRET=                          # Session signing key
 GITHUB_APP_ID=                       # GitHub App ID
-GITHUB_APP_PRIVATE_KEY=              # GitHub App private key (PEM)
+GITHUB_APP_PRIVATE_KEY=              # GitHub App private key (PEM, base64-encoded)
+GITHUB_APP_INSTALLATION_ID=          # GitHub App installation ID
 GITHUB_WEBHOOK_SECRET=               # Webhook HMAC secret
+GITHUB_ORG=                          # GitHub org repos are provisioned into
 JUMPCLOUD_SAML_CERT=                 # JumpCloud IdP certificate
 SAML_SP_ENTITY_ID=                   # https://vibeyeeter.internal.co/saml/metadata
 SAML_CALLBACK_URL=                   # https://vibeyeeter.internal.co/saml/callback

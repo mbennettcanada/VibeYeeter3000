@@ -1,10 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, isNull } from "drizzle-orm";
+import { createRepo, pushFile } from "@vibeyeeter/github-app";
 import { db } from "../db/client.js";
 import { apps, teams } from "../db/schema.js";
 import { requireSession } from "../middleware/auth.js";
 import { slugify } from "../lib/slug.js";
+import { hasGithubAppConfig } from "../config.js";
+import { parseGithubRepoUrl } from "../lib/github-url.js";
+import { renderClaudeMdTemplate } from "../lib/claude-md-template.js";
 
 const createAppSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -125,6 +129,28 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
         throw new Error("insert returned no row");
       }
 
+      const warnings: string[] = [];
+
+      if (!hasGithubAppConfig) {
+        warnings.push("GitHub App is not configured — skipped repo provisioning.");
+      } else {
+        try {
+          const { owner, repo } = parseGithubRepoUrl(repoUrl);
+          await createRepo(repo, owner);
+          await pushFile(
+            `${owner}/${repo}`,
+            "CLAUDE.md",
+            renderClaudeMdTemplate(name),
+            "chore: add CLAUDE.md",
+          );
+        } catch (error) {
+          request.log.error(error);
+          warnings.push(
+            `GitHub repo provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+      }
+
       reply.code(201).send({
         app: {
           id: created.id,
@@ -137,6 +163,7 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
           createdAt: created.createdAt.toISOString(),
           updatedAt: created.updatedAt.toISOString(),
         },
+        ...(warnings.length > 0 ? { warnings } : {}),
       });
     } catch (error) {
       request.log.error(error);

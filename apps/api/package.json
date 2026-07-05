@@ -17,6 +17,7 @@
     "@fastify/cookie": "^9.3.1",
     "@fastify/cors": "^9.0.1",
     "@fastify/session": "^10.9.0",
+    "@octokit/webhooks-types": "^7.6.1",
     "@vibeyeeter/github-app": "workspace:*",
     "@vibeyeeter/types": "workspace:*",
     "dotenv": "^16.4.5",
@@ -26,6 +27,7 @@
     "zod": "^3.23.4"
   },
   "devDependencies": {
+    "@octokit/webhooks-methods": "^4.1.0",
     "@types/node": "^20.12.7",
     "drizzle-kit": "^0.21.4",
     "tsx": "^4.7.3",
