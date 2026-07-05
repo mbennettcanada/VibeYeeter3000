@@ -9,6 +9,7 @@ import {
   openPR,
   createDeployment,
   updateDeploymentStatus,
+  pushAppTemplates,
 } from "./repo-ops.js";
 
 const server = setupServer();
@@ -150,6 +151,41 @@ describe("createDeployment", () => {
     const result = await createDeployment("acme/widget-factory", "main", "production");
 
     expect(result).toEqual({ id: 999 });
+  });
+});
+
+describe("pushAppTemplates", () => {
+  it("pushes the Dockerfile, deploy workflow, and Helm values with placeholders filled in", async () => {
+    const pushed: Record<string, string> = {};
+
+    server.use(
+      installationAuthHandler,
+      http.get("https://api.github.com/repos/acme/widget-factory/contents/*", () =>
+        HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+      ),
+      http.put(
+        "https://api.github.com/repos/acme/widget-factory/contents/*",
+        async ({ request, params }) => {
+          const body = (await request.json()) as { content: string };
+          const url = new URL(request.url);
+          const filePath = decodeURIComponent(url.pathname.replace(/^\/repos\/acme\/widget-factory\/contents\//, ""));
+          pushed[filePath] = Buffer.from(body.content, "base64").toString("utf-8");
+          return HttpResponse.json({}, { status: 201 });
+        },
+      ),
+    );
+
+    await pushAppTemplates("acme/widget-factory", "acme", "app-123", "widget-factory");
+
+    expect(Object.keys(pushed).sort()).toEqual(
+      [".github/workflows/deploy.yml", "Dockerfile", "helm/values.yaml"].sort(),
+    );
+    expect(pushed["helm/values.yaml"]).toContain('appId: "app-123"');
+    expect(pushed["helm/values.yaml"]).toContain('subdomain: "widget-factory"');
+    expect(pushed["helm/values.yaml"]).toContain("ghcr.io/acme/widget-factory");
+    expect(pushed[".github/workflows/deploy.yml"]).toContain("ghcr.io/acme/");
+    expect(pushed[".github/workflows/deploy.yml"]).toContain("/apps/app-123/deployments");
+    expect(pushed["Dockerfile"]).not.toContain("{{");
   });
 });
 

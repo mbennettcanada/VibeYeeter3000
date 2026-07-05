@@ -1,0 +1,29 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Suffixed with the image tag so a new Job is created per deploy — Jobs
+  # are immutable once created, and re-running migrations for the same
+  # image tag would otherwise fail with "field is immutable".
+  name: migrate-{{ .Values.appId }}-{{ .Values.image.tag }}
+  labels:
+    app.kubernetes.io/managed-by: vibeyeeter
+    app.kubernetes.io/instance: {{ .Values.appId | quote }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: vibeyeeter
+        app.kubernetes.io/instance: {{ .Values.appId | quote }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: {{ .Values.migrations.command | toJson }}
+          envFrom:
+            - secretRef:
+                name: app-secrets
+                optional: true
+{{- end }}

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: app
+    app.kubernetes.io/managed-by: vibeyeeter
+    app.kubernetes.io/instance: {{ .Values.appId | quote }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: app
+      app.kubernetes.io/instance: {{ .Values.appId | quote }}
+  template:
+    metadata:
+      labels:
+        app: app
+        app.kubernetes.io/managed-by: vibeyeeter
+        app.kubernetes.io/instance: {{ .Values.appId | quote }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: app-secrets
+                optional: true
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5

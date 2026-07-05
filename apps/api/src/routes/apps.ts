@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, isNull } from "drizzle-orm";
-import { createRepo, pushFile } from "@vibeyeeter/github-app";
+import { createRepo, pushFile, pushAppTemplates } from "@vibeyeeter/github-app";
 import { db } from "../db/client.js";
 import { apps, teams } from "../db/schema.js";
 import { requireSession } from "../middleware/auth.js";
@@ -163,6 +163,16 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
           request.log.error(error);
           warnings.push(
             `GitHub repo provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+
+        try {
+          const { owner, repo } = parseGithubRepoUrl(repoUrl);
+          await pushAppTemplates(`${owner}/${repo}`, owner, created.id, subdomain);
+        } catch (error) {
+          request.log.error(error);
+          warnings.push(
+            `App template provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
           );
         }
       }

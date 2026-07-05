@@ -4,7 +4,12 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { apps, deployments } from "../db/schema.js";
 import { requireSession } from "../middleware/auth.js";
-import { applyDeployment, isKubernetesConfigured, rollbackDeployment } from "../services/kubernetes.js";
+import {
+  applyDeployment,
+  ensureMigrationJob,
+  isKubernetesConfigured,
+  rollbackDeployment,
+} from "../services/kubernetes.js";
 
 async function findActiveApp(id: string) {
   const [app] = await db
@@ -21,6 +26,7 @@ function serializeDeployment(row: typeof deployments.$inferSelect) {
     appId: row.appId,
     imageTag: row.imageTag,
     status: row.status,
+    type: row.type,
     triggeredBy: row.triggeredBy,
     createdAt: row.createdAt.toISOString(),
     duration: row.duration,
@@ -74,6 +80,26 @@ export async function deploymentsRoutes(app: FastifyInstance): Promise<void> {
     if (!isKubernetesConfigured()) {
       warnings.push("Kubernetes is not configured — skipped applying the deployment manifest.");
     } else {
+      if (existingApp.migrationsEnabled) {
+        try {
+          const migration = await ensureMigrationJob(id, imageTag);
+          if (!migration.succeeded) {
+            reply.code(502).send({
+              error: "upstream_error",
+              detail: `Migration Job failed or timed out: ${migration.logs}`,
+            });
+            return;
+          }
+        } catch (error) {
+          request.log.error(error);
+          reply.code(502).send({
+            error: "upstream_error",
+            detail: `Failed to run migration Job: ${error instanceof Error ? error.message : "unknown error"}`,
+          });
+          return;
+        }
+      }
+
       try {
         await applyDeployment(id, imageTag);
       } catch (error) {
@@ -89,7 +115,7 @@ export async function deploymentsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const [created] = await db
         .insert(deployments)
-        .values({ appId: id, imageTag, status: "running", triggeredBy })
+        .values({ appId: id, imageTag, status: "running", type: "deploy", triggeredBy })
         .returning();
 
       if (!created) {
@@ -149,7 +175,7 @@ export async function deploymentsRoutes(app: FastifyInstance): Promise<void> {
       try {
         const [created] = await db
           .insert(deployments)
-          .values({ appId: id, imageTag: target.imageTag, status: "rolled_back", triggeredBy })
+          .values({ appId: id, imageTag: target.imageTag, status: "rolled_back", type: "rollback", triggeredBy })
           .returning();
 
         if (!created) {

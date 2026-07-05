@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app
+  labels:
+    app.kubernetes.io/managed-by: vibeyeeter
+    app.kubernetes.io/instance: {{ .Values.appId | quote }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+spec:
+  rules:
+    - host: {{ printf "%s.internal" .Values.ingress.subdomain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 3000

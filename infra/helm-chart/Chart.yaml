@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vibeyeeter-app
+description: Generic Helm chart deployed by VibeYeeter3000 for every managed app.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -5,6 +5,7 @@ import {
   KubeConfig,
   CoreV1Api,
   AppsV1Api,
+  BatchV1Api,
   NetworkingV1Api,
   PatchUtils,
   type V1Deployment,
@@ -53,6 +54,10 @@ function appsV1(): AppsV1Api {
 
 function networkingV1(): NetworkingV1Api {
   return loadKubeConfig().makeApiClient(NetworkingV1Api);
+}
+
+function batchV1(): BatchV1Api {
+  return loadKubeConfig().makeApiClient(BatchV1Api);
 }
 
 export function namespaceFor(appId: string): string {
@@ -365,4 +370,98 @@ export async function deleteIngress(appId: string): Promise<void> {
     }
     throw error;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pre-deploy migration Job
+// ---------------------------------------------------------------------------
+
+const MIGRATION_JOB_POLL_INTERVAL_MS = 2_000;
+const MIGRATION_JOB_TIMEOUT_MS = 120_000;
+const MIGRATION_CONTAINER_NAME = "migrate";
+
+export interface MigrationJobResult {
+  succeeded: boolean;
+  logs: string;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Runs `npm run migrate` as a one-off Job in the app's namespace ahead of
+// rolling out `imageTag`, polling until it finishes or MIGRATION_JOB_TIMEOUT_MS
+// elapses. Callers should skip applyDeployment when `succeeded` is false.
+export async function ensureMigrationJob(appId: string, imageTag: string): Promise<MigrationJobResult> {
+  const namespace = namespaceFor(appId);
+  // Job names double as the "job-name" pod label (DNS_LABEL, 63 chars) — keep
+  // this short rather than embedding full UUIDs.
+  const runId = Math.random().toString(36).slice(2, 10);
+  const jobName = `migrate-${appId.slice(0, 8)}-${runId}`;
+  const labels = { "job-name": jobName, ...standardLabels(appId) };
+
+  await batchV1().createNamespacedJob(namespace, {
+    apiVersion: "batch/v1",
+    kind: "Job",
+    metadata: { name: jobName, namespace, labels },
+    spec: {
+      backoffLimit: 0,
+      template: {
+        metadata: { labels },
+        spec: {
+          restartPolicy: "Never",
+          containers: [
+            {
+              name: MIGRATION_CONTAINER_NAME,
+              image: imageTag,
+              command: ["npm", "run", "migrate"],
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  const deadline = Date.now() + MIGRATION_JOB_TIMEOUT_MS;
+  let succeeded = false;
+  let finished = false;
+
+  while (Date.now() < deadline) {
+    const { body } = await batchV1().readNamespacedJobStatus(jobName, namespace);
+    if ((body.status?.succeeded ?? 0) > 0) {
+      succeeded = true;
+      finished = true;
+      break;
+    }
+    if ((body.status?.failed ?? 0) > 0) {
+      succeeded = false;
+      finished = true;
+      break;
+    }
+    await sleep(MIGRATION_JOB_POLL_INTERVAL_MS);
+  }
+
+  let logs = "";
+  try {
+    const { body: podList } = await coreV1().listNamespacedPod(
+      namespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      `job-name=${jobName}`,
+    );
+    const podName = podList.items[0]?.metadata?.name;
+    if (podName) {
+      logs = await getPodLogs(appId, podName);
+    }
+  } catch (error) {
+    logs = `Failed to fetch migration Job logs: ${error instanceof Error ? error.message : "unknown error"}`;
+  }
+
+  if (!finished) {
+    logs = `${logs}\nTimed out waiting for migration Job "${jobName}" after ${MIGRATION_JOB_TIMEOUT_MS}ms.`.trim();
+  }
+
+  return { succeeded: finished && succeeded, logs };
 }

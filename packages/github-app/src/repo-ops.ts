@@ -1,4 +1,33 @@
+import { readFileSync } from "node:fs";
+import nodePath from "node:path";
+import { fileURLToPath } from "node:url";
 import { getOctokit } from "./client.js";
+
+// infra/app-templates lives at the repo root, three levels up from this
+// package's src/ dir (packages/github-app/src -> packages/github-app ->
+// packages -> repo root).
+const APP_TEMPLATES_DIR = nodePath.resolve(
+  nodePath.dirname(fileURLToPath(import.meta.url)),
+  "../../../infra/app-templates",
+);
+
+// Relative source path (under infra/app-templates) -> destination path in
+// the app repo. Currently identical, kept separate in case the two diverge.
+const APP_TEMPLATE_FILES = [
+  "Dockerfile",
+  ".github/workflows/deploy.yml",
+  "helm/values.yaml",
+] as const;
+
+function renderAppTemplate(
+  content: string,
+  vars: { appId: string; subdomain: string; org: string },
+): string {
+  return content
+    .replaceAll("{{APP_ID}}", vars.appId)
+    .replaceAll("{{SUBDOMAIN}}", vars.subdomain)
+    .replaceAll("{{ORG}}", vars.org);
+}
 
 export interface CreatedRepo {
   name: string;
@@ -148,4 +177,21 @@ export async function updateDeploymentStatus(
     state,
     log_url: logUrl,
   });
+}
+
+// Pushes the Dockerfile, deploy workflow, and Helm values override from
+// infra/app-templates into a newly registered app's repo, with
+// {{APP_ID}} / {{SUBDOMAIN}} / {{ORG}} placeholders filled in. Called
+// once at app registration time (see POST /apps in apps/api).
+export async function pushAppTemplates(
+  repo: string,
+  org: string,
+  appId: string,
+  subdomain: string,
+): Promise<void> {
+  for (const relativePath of APP_TEMPLATE_FILES) {
+    const raw = readFileSync(nodePath.join(APP_TEMPLATES_DIR, relativePath), "utf-8");
+    const rendered = renderAppTemplate(raw, { appId, subdomain, org });
+    await pushFile(repo, relativePath, rendered, `chore: add ${relativePath}`);
+  }
 }

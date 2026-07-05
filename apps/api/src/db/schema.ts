@@ -26,6 +26,9 @@ export const apps = pgTable("apps", {
   repoUrl: text("repo_url").notNull(),
   namespace: text("namespace").notNull(),
   subdomain: text("subdomain").notNull().unique(),
+  // Gates the pre-deploy migration Job (see services/kubernetes.ts
+  // ensureMigrationJob) — apps without a migrate script should leave this false.
+  migrationsEnabled: boolean("migrations_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -42,6 +45,11 @@ export const deployments = pgTable("deployments", {
   })
     .notNull()
     .default("pending"),
+  // "restart" rows are created when a secret change triggers a rolling
+  // restart of the existing image — no new image tag, just a re-apply.
+  type: text("type", { enum: ["deploy", "rollback", "restart"] })
+    .notNull()
+    .default("deploy"),
   triggeredBy: text("triggered_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   duration: integer("duration"),
@@ -112,3 +120,16 @@ export const teamMembers = pgTable(
     pk: primaryKey({ columns: [table.teamId, table.userId] }),
   }),
 );
+
+// Maps a team to the SAML IdP group (JumpCloud "memberOf" value, or
+// whichever attribute SAML_GROUPS_ATTRIBUTE points at) that should be
+// synced into membership on every SSO login. A team may have zero or more
+// external groups mapped to it.
+export const teamExternalGroups = pgTable("team_external_groups", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  teamId: uuid("team_id")
+    .notNull()
+    .references(() => teams.id),
+  externalGroupId: text("external_group_id").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

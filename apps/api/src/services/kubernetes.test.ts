@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   patchNamespacedService: vi.fn(),
   patchNamespacedIngress: vi.fn(),
   deleteNamespacedIngress: vi.fn(),
+  createNamespacedJob: vi.fn(),
+  readNamespacedJobStatus: vi.fn(),
   loadFromDefault: vi.fn(),
 }));
 
@@ -32,12 +34,17 @@ vi.mock("@kubernetes/client-node", () => {
     patchNamespacedIngress = mocks.patchNamespacedIngress;
     deleteNamespacedIngress = mocks.deleteNamespacedIngress;
   }
+  class FakeBatchV1Api {
+    createNamespacedJob = mocks.createNamespacedJob;
+    readNamespacedJobStatus = mocks.readNamespacedJobStatus;
+  }
   class FakeKubeConfig {
     loadFromDefault = mocks.loadFromDefault;
     makeApiClient(ctor: unknown) {
       if (ctor === FakeCoreV1Api) return new FakeCoreV1Api();
       if (ctor === FakeAppsV1Api) return new FakeAppsV1Api();
       if (ctor === FakeNetworkingV1Api) return new FakeNetworkingV1Api();
+      if (ctor === FakeBatchV1Api) return new FakeBatchV1Api();
       throw new Error("unexpected api client type requested in test");
     }
   }
@@ -47,6 +54,7 @@ vi.mock("@kubernetes/client-node", () => {
     CoreV1Api: FakeCoreV1Api,
     AppsV1Api: FakeAppsV1Api,
     NetworkingV1Api: FakeNetworkingV1Api,
+    BatchV1Api: FakeBatchV1Api,
     PatchUtils: { PATCH_FORMAT_APPLY_YAML: "application/apply-patch+yaml" },
   };
 });
@@ -363,5 +371,50 @@ describe("deleteIngress", () => {
     const { deleteIngress } = await import("./kubernetes.js");
 
     await expect(deleteIngress("app-123")).resolves.toBeUndefined();
+  });
+});
+
+describe("ensureMigrationJob", () => {
+  it("creates a Job and returns succeeded once the Job reports success", async () => {
+    mocks.createNamespacedJob.mockResolvedValueOnce({});
+    mocks.readNamespacedJobStatus.mockResolvedValueOnce({ body: { status: { succeeded: 1 } } });
+    mocks.listNamespacedPod.mockResolvedValueOnce({
+      body: { items: [{ metadata: { name: "migrate-app-123-abc-xyz" } }] },
+    });
+    mocks.readNamespacedPodLog.mockResolvedValueOnce({ body: "migrations applied\n" });
+
+    const { ensureMigrationJob, namespaceFor } = await import("./kubernetes.js");
+
+    const result = await ensureMigrationJob("app-123", "registry/app:abc123");
+
+    expect(result).toEqual({ succeeded: true, logs: "migrations applied\n" });
+    expect(mocks.createNamespacedJob).toHaveBeenCalledTimes(1);
+    const [namespace, manifest] = mocks.createNamespacedJob.mock.calls[0] as [
+      string,
+      {
+        spec: {
+          template: { spec: { containers: Array<{ image: string; command: string[] }> } };
+        };
+      },
+    ];
+    expect(namespace).toBe(namespaceFor("app-123"));
+    expect(manifest.spec.template.spec.containers[0]?.image).toBe("registry/app:abc123");
+    expect(manifest.spec.template.spec.containers[0]?.command).toEqual(["npm", "run", "migrate"]);
+  });
+
+  it("returns succeeded: false when the Job reports failure", async () => {
+    mocks.createNamespacedJob.mockResolvedValueOnce({});
+    mocks.readNamespacedJobStatus.mockResolvedValueOnce({ body: { status: { failed: 1 } } });
+    mocks.listNamespacedPod.mockResolvedValueOnce({
+      body: { items: [{ metadata: { name: "migrate-app-123-abc-xyz" } }] },
+    });
+    mocks.readNamespacedPodLog.mockResolvedValueOnce({ body: "migration error\n" });
+
+    const { ensureMigrationJob } = await import("./kubernetes.js");
+
+    const result = await ensureMigrationJob("app-123", "registry/app:abc123");
+
+    expect(result.succeeded).toBe(false);
+    expect(result.logs).toBe("migration error\n");
   });
 });
