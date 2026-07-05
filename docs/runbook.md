@@ -4,12 +4,73 @@ Operational procedures for the platform team.
 
 ---
 
-## Platform bootstrap (first-time setup)
+## Local Kubernetes testing with Rancher Desktop
+
+### Install
+
+1. Download and install [Rancher Desktop](https://rancherdesktop.io/) (includes k3s + kubectl)
+2. Start Rancher Desktop and wait for the cluster to become ready (green status bar)
+3. Verify the context:
+
+```bash
+kubectl config current-context   # → rancher-desktop
+kubectl cluster-info             # → Kubernetes control plane is running at https://127.0.0.1:6443
+```
+
+If you previously had an EKS (or other) context active, switch to Rancher Desktop:
+
+```bash
+kubectl config use-context rancher-desktop
+```
+
+Note: Rancher Desktop writes its config to `~/.kube/config`, replacing or merging with
+whatever was there. If you cleared the file manually, Rancher Desktop will rewrite it the
+next time the cluster is restarted.
+
+### Run the smoke test
+
+The smoke test exercises the full app lifecycle against the real local k3s cluster:
+
+```bash
+# Prerequisites:
+#   - Rancher Desktop running (rancher-desktop context active)
+#   - API running: cd apps/api && pnpm dev  (or pnpm dev from root)
+#   - Postgres running: docker compose -f docker-compose.dev.yml up -d
+#   - psql on PATH (postgres CLI tools)
+
+npx tsx scripts/k8s-smoke-test.ts
+```
+
+The test creates a test app, verifies the namespace appears in k3s, triggers a deployment,
+waits for pods to reach Running phase, then tears everything down. Exit 0 = pass, 1 = fail.
+
+### Useful local kubectl commands
+
+```bash
+# Watch all vibeyeeter namespaces
+kubectl get namespaces | grep vibeyeeter
+
+# Watch pods in a specific app namespace
+kubectl get pods -n vibeyeeter-<appId> -w
+
+# Describe a pod (good for diagnosing ImagePullBackOff, probe failures)
+kubectl describe pod <pod-name> -n vibeyeeter-<appId>
+
+# Get logs from a pod
+kubectl logs -n vibeyeeter-<appId> -l app=app --tail=50
+
+# Delete a test namespace manually (if a smoke test left one behind)
+kubectl delete namespace vibeyeeter-<appId>
+```
+
+---
+
+## Platform bootstrap (first-time production setup)
 
 ### 1. AWS prerequisites
 
 ```bash
-# Create the Terraform state bucket
+# Create the OpenTofu state bucket
 aws s3api create-bucket \
   --bucket vibeyeeter-tf-state \
   --region us-east-1
@@ -31,9 +92,9 @@ aws dynamodb create-table \
 
 ```bash
 cd infra/platform
-terraform init
-terraform plan
-terraform apply
+tofu init
+tofu plan
+tofu apply
 ```
 
 This creates:
@@ -65,7 +126,14 @@ helm install external-secrets external-secrets/external-secrets -n external-secr
 kubectl create namespace vibeyeeter-system
 ```
 
-### 4. Register GitHub App
+### 4. Run database migrations
+
+```bash
+# Apply platform DB schema
+DATABASE_URL=postgres://<host>/vibeyeeter pnpm --filter @vibeyeeter/api db:migrate
+```
+
+### 5. Register GitHub App
 
 1. Go to `https://github.com/organizations/mbennettcanada/settings/apps/new`
 2. App name: `vibeyeeter-bot`
@@ -74,22 +142,64 @@ kubectl create namespace vibeyeeter-system
 5. Webhook secret: generate and store in AWS Secrets Manager at `/vibeyeeter/platform/github-webhook-secret`
 6. Permissions: Contents (R/W), Workflows (W), Pull requests (W), Deployments (W)
 7. Events: Push, Pull request, Deployment status
-8. Generate and download private key → store in AWS Secrets Manager at `/vibeyeeter/platform/github-app-private-key`
-9. Note the App ID → store as `/vibeyeeter/platform/github-app-id`
-10. Install the app on the `mbennettcanada` org
+8. Generate and download private key → base64-encode it:
+   ```bash
+   base64 -i vibeyeeter-bot.private-key.pem
+   ```
+   Store as `GITHUB_APP_PRIVATE_KEY` in the API's environment.
+9. Note the App ID → `GITHUB_APP_ID`
+10. Install the app on the `mbennettcanada` org → note the Installation ID → `GITHUB_APP_INSTALLATION_ID`
 
-### 5. Configure JumpCloud SAML
+### 6. Configure JumpCloud SAML
 
 1. In JumpCloud admin: Applications → Add Application → Custom SAML App
 2. Display name: `VibeYeeter3000`
 3. SP Entity ID: `https://vibeyeeter.internal.yourcompany.com/saml/metadata`
 4. ACS URL: `https://vibeyeeter.internal.yourcompany.com/saml/callback`
-5. Download IdP metadata XML → save as `/vibeyeeter/platform/jumpcloud-saml-metadata`
+5. Download IdP metadata XML → extract the certificate → set as `JUMPCLOUD_SAML_CERT`
 6. Attribute mappings:
    - `email` → user email
    - `groups` → user's JumpCloud group names
 
-### 6. Deploy the platform
+### 7. Set all required environment variables
+
+**API (`apps/api/.env` or Kubernetes secret):**
+
+```bash
+DATABASE_URL=postgres://<user>:<pass>@<host>/vibeyeeter
+JWT_SECRET=<32+ char secret>
+
+# GitHub App (vibeyeeter-bot)
+GITHUB_APP_ID=<numeric app id>
+GITHUB_APP_PRIVATE_KEY=<base64-encoded PEM>
+GITHUB_APP_INSTALLATION_ID=<installation id>
+GITHUB_WEBHOOK_SECRET=<webhook HMAC secret>
+GITHUB_ORG=mbennettcanada
+
+# JumpCloud SAML
+JUMPCLOUD_SAML_CERT=<IdP certificate PEM>
+SAML_SP_ENTITY_ID=https://vibeyeeter.internal.yourcompany.com/saml/metadata
+SAML_CALLBACK_URL=https://vibeyeeter.internal.yourcompany.com/saml/callback
+
+AWS_REGION=us-east-1
+TF_RUNNER_URL=http://tf-runner:4001
+
+# Optional
+KUBECONFIG=/path/to/kubeconfig   # only if not using in-cluster service account
+LOG_LEVEL=info
+PORT=3002
+```
+
+**tf-runner (`services/tf-runner/.env` or Kubernetes secret):**
+
+```bash
+TF_RUNNER_DATABASE_URL=postgres://<user>:<pass>@<host>/vibeyeeter
+TOFU_BIN=tofu     # or path to opentofu binary if not on PATH
+LOG_LEVEL=info
+PORT=4001
+```
+
+### 8. Deploy the platform
 
 ```bash
 # Build and push platform images
@@ -117,17 +227,17 @@ kubectl logs -n vibeyeeter-system deploy/vibeyeeter-web --tail=50
 ### Check a specific app
 
 ```bash
-# List pods
-kubectl get pods -n <team>-<app>
+# Namespace is vibeyeeter-<appId>
+kubectl get pods -n vibeyeeter-<appId>
 
 # Check deployment status
-kubectl rollout status deployment/<app> -n <team>-<app>
+kubectl rollout status deployment/app -n vibeyeeter-<appId>
 
 # Get logs
-kubectl logs -n <team>-<app> deploy/<app> --tail=100
+kubectl logs -n vibeyeeter-<appId> deploy/app --tail=100
 
 # Describe pod (for crash debugging)
-kubectl describe pod -n <team>-<app> <pod-name>
+kubectl describe pod -n vibeyeeter-<appId> <pod-name>
 ```
 
 ### Manually trigger a rollback
@@ -140,9 +250,15 @@ aws ecr describe-images --repository-name <app> --query 'sort_by(imageDetails,&i
 
 # Update helm values to previous tag
 helm upgrade <app> k8s/app-chart \
-  --namespace <team>-<app> \
+  --namespace vibeyeeter-<appId> \
   --set image.tag=<previous-tag> \
   --reuse-values
+```
+
+Or via the API directly:
+
+```bash
+curl -X POST http://localhost:3002/apps/<appId>/deployments/<deploymentId>/rollback
 ```
 
 ### Add a secret manually
@@ -154,15 +270,15 @@ aws secretsmanager put-secret-value \
 
 # Trigger ExternalSecret refresh
 kubectl annotate externalsecret app-secrets \
-  -n <team>-<app> \
+  -n vibeyeeter-<appId> \
   force-sync=$(date +%s) \
   --overwrite
 
 # Rolling restart to pick up new secret
-kubectl rollout restart deployment/<app> -n <team>-<app>
+kubectl rollout restart deployment/app -n vibeyeeter-<appId>
 ```
 
-### Run Terraform manually
+### Run OpenTofu manually
 
 ```bash
 cd /tmp
@@ -170,9 +286,9 @@ git clone https://github.com/mbennettcanada/<app>
 cd <app>/infra
 
 # Backend config is already in backend.tf
-terraform init
-terraform plan
-terraform apply
+tofu init
+tofu plan
+tofu apply
 ```
 
 ### Force a migration run
@@ -180,10 +296,10 @@ terraform apply
 ```bash
 # Create a one-off Job using the app image
 kubectl create job migrate-manual --image=<ecr-image> \
-  -n <team>-<app> \
+  -n vibeyeeter-<appId> \
   -- npx drizzle-kit migrate
 
-kubectl logs -n <team>-<app> job/migrate-manual -f
+kubectl logs -n vibeyeeter-<appId> job/migrate-manual -f
 ```
 
 ---
@@ -192,23 +308,23 @@ kubectl logs -n <team>-<app> job/migrate-manual -f
 
 ### App is down (pods not running)
 
-1. Check pod status: `kubectl get pods -n <team>-<app>`
-2. If `CrashLoopBackOff`: `kubectl logs -n <team>-<app> <pod> --previous`
+1. Check pod status: `kubectl get pods -n vibeyeeter-<appId>`
+2. If `CrashLoopBackOff`: `kubectl logs -n vibeyeeter-<appId> <pod> --previous`
 3. If `ImagePullBackOff`: check ECR repo exists and IAM permissions
 4. If `Pending`: check node capacity (`kubectl describe nodes`)
 5. Roll back via UI or manual Helm command if the bad deploy is the cause
 
 ### Migration failed and blocked deploy
 
-1. Check migration Job logs: `kubectl logs -n <team>-<app> job/migrate-<timestamp>`
-2. Connect to DB to diagnose: `kubectl exec -n <team>-<app> -it <cnpg-pod> -- psql -U app <dbname>`
+1. Check migration Job logs: `kubectl logs -n vibeyeeter-<appId> job/migrate-<timestamp>`
+2. Connect to DB to diagnose: `kubectl exec -n vibeyeeter-<appId> -it <cnpg-pod> -- psql -U app <dbname>`
 3. If migration is partially applied and needs rollback, coordinate with app owner — Drizzle doesn't auto-rollback
 4. After fixing, delete the failed Job and re-trigger deploy
 
 ### Database is unavailable
 
-1. Check CNPG cluster status: `kubectl get cluster -n <team>-<app>`
-2. Check CNPG pod logs: `kubectl logs -n <team>-<app> <cnpg-primary-pod>`
+1. Check CNPG cluster status: `kubectl get cluster -n vibeyeeter-<appId>`
+2. Check CNPG pod logs: `kubectl logs -n vibeyeeter-<appId> <cnpg-primary-pod>`
 3. If primary is unhealthy, CNPG will promote a replica automatically within ~30s
 4. For data recovery: see [Database backup restore](#database-backup-restore)
 
@@ -227,7 +343,7 @@ CNPG takes continuous WAL backups to S3. To restore:
 
 ```bash
 # List available backups
-kubectl get backup -n <team>-<app>
+kubectl get backup -n vibeyeeter-<appId>
 
 # Point-in-time restore (creates a new cluster)
 cat <<EOF | kubectl apply -f -
@@ -235,7 +351,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: <app>-db-restored
-  namespace: <team>-<app>
+  namespace: vibeyeeter-<appId>
 spec:
   instances: 1
   bootstrap:
@@ -283,15 +399,15 @@ When you change a generated file template (e.g. update the deploy workflow):
 
 ```bash
 # 1. Back up the database first
-kubectl annotate cluster <app>-db -n <team>-<app> \
+kubectl annotate cluster <app>-db -n vibeyeeter-<appId> \
   cnpg.io/immediateCheckpoint=true
 
-# 2. Delete the namespace (destroys pods, DB, secrets sync)
-kubectl delete namespace <team>-<app>
+# 2. Delete via API (soft-deletes the record and deletes the k8s namespace)
+curl -X DELETE http://localhost:3002/apps/<appId>
 
-# 3. Run terraform destroy (manual — requires confirmation)
+# 3. Run tofu destroy (manual — requires confirmation)
 cd /tmp/<app>/infra
-terraform destroy
+tofu destroy
 
 # 4. Delete ECR repo (or archive it)
 aws ecr delete-repository --repository-name <app> --force
@@ -301,7 +417,4 @@ aws ecr delete-repository --repository-name <app> --force
 # 6. Remove secrets from AWS Secrets Manager
 aws secretsmanager delete-secret --secret-id /vibeyeeter/<team>/<app>/DATABASE_URL
 # repeat for each secret
-
-# 7. Deregister from platform DB
-# (via platform admin UI: Apps → <app> → Deregister)
 ```

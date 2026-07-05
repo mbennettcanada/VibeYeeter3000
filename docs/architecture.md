@@ -15,14 +15,15 @@ VibeYeeter3000 is three systems working together:
              │                            │
 ┌────────────▼────────────┐  ┌───────────▼───────────────────┐
 │      GitHub App         │  │      Per-App Namespace         │
-│    vibeyeeter-bot       │  │                               │
-│                         │  │  Deployment (app pods)        │
-│  - push workflows       │  │  CloudNative PG cluster       │
-│  - push helm values     │  │  ExternalSecret (AWS SM)      │
-│  - receive webhooks     │  │  Migration Job (pre-deploy)   │
-│  - future: open PRs     │  │  Ingress + CF Access policy   │
-└────────────┬────────────┘  └───────────────────────────────┘
-             │
+│    vibeyeeter-bot       │  │   vibeyeeter-<appId>           │
+│                         │  │                               │
+│  - create repo          │  │  Namespace                    │
+│  - push CLAUDE.md       │  │  Deployment (app pods)        │
+│  - receive webhooks     │  │  Service (ClusterIP)          │
+│  - open PRs (future)    │  │  Ingress (nginx)              │
+│  - create deployments   │  │  CloudNative PG (prod)        │
+└────────────┬────────────┘  │  ExternalSecret (prod)        │
+             │               └───────────────────────────────┘
     Push to main webhook
              │
 ┌────────────▼────────────┐
@@ -34,9 +35,9 @@ VibeYeeter3000 is three systems working together:
 │  4. Health check        │
 └─────────────────────────┘
 
-     Terraform changes:
+     OpenTofu changes:
 ┌─────────────────────────┐
-│    Terraform Runner     │
+│     OpenTofu Runner     │
 │   (tf-runner service)   │
 │                         │
 │  - plan on PR           │
@@ -51,50 +52,59 @@ VibeYeeter3000 is three systems working together:
 
 ### Control plane
 
-**Web UI** (`apps/web`): Next.js 14 App Router. The primary interface for non-technical users. Deployed in the `vibeyeeter-system` namespace.
+**Web UI** (`apps/web`): Next.js 14 App Router. The primary interface for non-technical users.
+Deployed in the `vibeyeeter-system` namespace in production. Served on port 3000 in development.
 
-**API** (`apps/api`): Fastify. Handles:
-- JumpCloud SAML assertion processing and session management
-- GitHub App webhook ingestion and event processing
-- Kubernetes API calls (pods, deployments, rollouts, logs)
-- AWS API calls (ECR image history, Secrets Manager, S3 backups)
-- Terraform runner orchestration
+Key pages:
+- `/` — dashboard listing all apps
+- `/apps/[id]` — app detail (pods, recent deployments, secrets, tf runs)
+- `/apps/[id]/deployments` — full deployment history + rollback
+- `/apps/[id]/secrets` — secret management (keys only displayed)
+- `/apps/[id]/terraform` — tf plan/apply history
+
+**API** (`apps/api`): Fastify, port 3002. Handles:
+- JumpCloud SAML assertion processing and session management (`/saml/*`)
+- GitHub App webhook ingestion (`POST /webhooks/github`)
+- Kubernetes API calls: namespace/service/ingress provisioning, pod listing, logs, deployments
+- AWS API calls: Secrets Manager CRUD (stubbed locally)
+- OpenTofu runner orchestration via HTTP (`tf-runner`)
 - App registration and lifecycle management
+
+All routes require a valid session cookie (or `DEV_AUTH_BYPASS=true` for local dev)
+except `GET /health` and `/saml/*`.
 
 ### GitHub App (`vibeyeeter-bot`)
 
 Installed on the `mbennettcanada` GitHub org. The platform's identity in GitHub.
 
-**Permissions:**
-- Contents: read/write (push generated files)
-- Workflows: write (manage GitHub Actions)
-- Pull requests: write (future: AI feature PRs)
-- Deployments: write (create deployment records)
-- Webhooks: push, pull_request, deployment_status events
+**Permissions:** Contents (R/W), Workflows (W), Pull requests (W), Deployments (W).
+**Events:** push, pull_request, deployment_status.
 
-**Files it manages in every app repo:**
+**Files pushed on app registration:**
 
-| File | When generated | Description |
-|---|---|---|
-| `.github/workflows/deploy.yml` | Registration | Build + ECR push + Helm upgrade |
-| `.github/workflows/migrate.yml` | Registration | Pre-deploy Drizzle migration Job |
-| `.github/workflows/tf-plan.yml` | Registration | Terraform plan on PR, post comment |
-| `.github/workflows/tf-apply.yml` | Registration | Terraform apply after successful deploy |
-| `helm/values.yaml` | Registration + updates | Helm values for this app |
-| `infra/backend.tf` | Registration | Remote state config (S3 + DynamoDB) |
-| `Dockerfile` | Registration | Production multi-stage build |
+| File | Description |
+|---|---|
+| `CLAUDE.md` | AI agent context file for the app repo |
 
-These files are regenerated if platform conventions change. Apps should not edit them manually — changes are overwritten.
+Additional generated files (deploy workflow, Dockerfile, helm values, backend.tf) are
+planned for the workflow-generation phase and not yet pushed automatically.
 
-### Terraform runner (`services/tf-runner`)
+**Webhook events handled** (in `packages/github-app/src/webhooks.ts`):
+- `push` to main → creates a GitHub Deployment record, triggers platform deploy flow
+- `pull_request` opened/updated → triggers OpenTofu plan
+- `deployment_status` → reconciles the platform deployment record with GitHub's status
 
-A Node.js service running in `vibeyeeter-system`. Exposes an internal HTTP API.
+### OpenTofu runner (`services/tf-runner`)
+
+A Node.js/Fastify service running on port 4001, isolated to `vibeyeeter-system` in production (no external ingress). Runs `tofu` (OpenTofu) as a child process.
 
 **Endpoints:**
-- `POST /plan` — clone repo, run `terraform plan -out=plan.tfplan`, return structured diff
-- `POST /apply` — run `terraform apply plan.tfplan` with a pre-approved plan
-- `POST /destroy` — run `terraform destroy` (requires explicit platform-level confirmation)
-- `GET /state/:team/:app` — return current state summary
+- `POST /plan` — clone repo, run `tofu plan`, store structured diff
+- `POST /apply` — run `tofu apply` against a pre-stored plan
+- `POST /destroy` — run `tofu destroy` (requires explicit confirmation)
+- `GET /runs/:runId` — return a specific run's status and output
+
+Each run is persisted to the `tf_runs` table in Postgres. The tf-runner connects to the same Postgres instance as the API but via its own `TF_RUNNER_DATABASE_URL` env var.
 
 **State layout in S3:**
 ```
@@ -102,41 +112,46 @@ s3://vibeyeeter-tf-state/
   <team-slug>/
     <app-slug>/
       terraform.tfstate
-      terraform.tfstate.backup
 ```
 
 Lock table: DynamoDB `vibeyeeter-tf-locks` (partition key: `LockID`).
 
-The runner has an IAM role (via IRSA) with read/write access to the state bucket and lock table. App pods do not have access to the state bucket.
+The runner has an IAM role (IRSA) with S3 + DynamoDB access. App pods do not have access to the state bucket.
+
+> **Tooling note:** The underlying tool is OpenTofu (`tofu` binary, configured via `TOFU_BIN`).
+> Route paths (`/plan`, `/apply`, `/destroy`) and the dashboard path (`/apps/[id]/terraform`)
+> remain stable regardless of which tool is in use underneath.
 
 ### Per-app Kubernetes namespace
 
-When an app is registered, the platform creates:
+When an app is registered via `POST /apps`, the platform creates:
 
-```yaml
-# Namespace
-vibeyeeter create-namespace --team growth --app lead-tracker
-# → namespace: growth-lead-tracker
-
-# Resources created:
-- Namespace: growth-lead-tracker
-- CloudNative PG Cluster: lead-tracker-db
-- ExternalSecret: app-secrets (pulls from /vibeyeeter/growth/lead-tracker/ in AWS SM)
-- ServiceAccount: lead-tracker (with IRSA annotation)
-- NetworkPolicy: deny cross-namespace traffic
-- Ingress: lead-tracker.internal.yourcompany.com (CF Access policy attached)
-- HPA: min 1, max 5 replicas (configurable)
 ```
+Namespace:    vibeyeeter-<appId>
+Service:      app  (ClusterIP, port 3000)
+Ingress:      app  (nginx, host: <subdomain>.internal)
+```
+
+The namespace name is `vibeyeeter-<appId>` where `<appId>` is the UUID assigned to the app row in the platform database. Labels applied: `app.kubernetes.io/managed-by=vibeyeeter` and `app.kubernetes.io/instance=<appId>`.
+
+When `POST /apps/:id/deployments` is called with an `imageTag`, the platform creates or updates a Kubernetes Deployment named `app` in that namespace. The deployment uses server-side apply (SSA), so re-deploying a new image tag is an in-place patch.
+
+In production, additional resources are created per namespace:
+- CloudNative PG cluster (PostgreSQL, 1 primary + 1 replica)
+- ExternalSecret (syncs values from `/vibeyeeter/<team>/<app>/` in AWS Secrets Manager)
+- NetworkPolicy (deny cross-namespace traffic)
+- ServiceAccount with IRSA annotation
 
 ### Helm chart (`k8s/app-chart`)
 
-One shared Helm chart for all managed apps. Per-app configuration lives in `helm/values.yaml` in each app repo (managed by the platform).
+One shared Helm chart for all managed apps. Per-app configuration lives in
+`helm/values.yaml` in each app repo (pushed and maintained by the platform).
 
 Key values:
 ```yaml
 image:
   repository: <account>.dkr.ecr.us-east-1.amazonaws.com/<app>
-  tag: latest          # platform updates this on each deploy
+  tag: latest          # updated on each deploy
   pullPolicy: Always
 
 replicaCount: 2
@@ -148,7 +163,7 @@ env:
       key: DATABASE_URL
 
 ingress:
-  host: lead-tracker.internal.yourcompany.com
+  host: <subdomain>.internal.yourcompany.com
   cfAccessEnabled: true
 
 resources:
@@ -160,7 +175,7 @@ resources:
     memory: 512Mi
 
 migrations:
-  enabled: true        # runs migration Job before Deployment rolls out
+  enabled: true
 ```
 
 ---
@@ -177,28 +192,31 @@ User browser
         → App pod
 ```
 
-Every app gets a Cloudflare Access policy on registration. Policy requires membership in the appropriate JumpCloud group. No app implements its own network-level access control.
+Every app gets a Cloudflare Access policy on registration. Policy requires membership in the appropriate JumpCloud group.
 
-Apps receive the `CF-Access-JWT-Assertion` header from Cloudflare, which encodes the authenticated user's identity (email, groups). Apps can use this for application-level authorization (showing different UI to different roles) without implementing their own OAuth flow.
+Apps receive the `CF-Access-JWT-Assertion` header from Cloudflare, encoding the authenticated user's identity (email, groups). Apps can use this for application-level authorization without implementing their own OAuth flow.
 
 ### Platform auth
 
 1. User visits platform UI → redirected to JumpCloud SSO
 2. JumpCloud issues SAML assertion with user's groups
-3. Platform API validates assertion, creates session
+3. Platform API validates assertion (`/saml/callback`), creates session cookie
 4. User's JumpCloud groups determine which teams and apps they can see
 
 **Group conventions:**
 - `vibeyeeter-admin` → can see and manage all teams and apps
-- `team-<slug>` → can see and manage apps in that team's namespace
+- `team-<slug>` → can see and manage apps under that team
+
+**Local dev:** `DEV_AUTH_BYPASS=true` in `apps/api/.env.local` attaches a fake admin user
+(`{ id: "local", email: "dev@local", teams: ["dev"], isAdmin: true }`) to every request,
+bypassing SAML entirely. Never enable this in staging/production.
 
 ### Secrets
 
 ```
 AWS Secrets Manager
   /vibeyeeter/<team>/<app>/DATABASE_URL
-  /vibeyeeter/<team>/<app>/NEXTAUTH_SECRET
-  /vibeyeeter/<team>/<app>/<any-other-secret>
+  /vibeyeeter/<team>/<app>/<any-secret>
       ↓
 External Secrets Operator
       ↓
@@ -207,19 +225,27 @@ Kubernetes Secret (in app namespace)
 Pod environment variables
 ```
 
-Platform UI allows viewing secret keys (not values), adding new secrets, and rotating existing ones. Values are never displayed after initial creation.
+Platform API allows viewing secret keys (never values), adding secrets, and deleting them.
+Values are never stored in the platform database or returned in API responses — only key
+names are tracked (in the `secrets` table) so the dashboard can list/manage them.
 
 ---
 
 ## Database
 
-### CloudNative PG
+### Platform database
 
-Each app gets its own PostgreSQL cluster managed by the CloudNative PG operator. Features:
+The platform API uses its own PostgreSQL instance (separate from per-app databases).
+Tables: `teams`, `apps`, `deployments`, `tf_runs`, `secrets`, `users`, `team_members`.
+Schema managed via Drizzle ORM; migrations in `apps/api/src/db/migrations/`.
+
+### CloudNative PG (production)
+
+Each app gets its own PostgreSQL cluster managed by the CloudNative PG operator:
 - Automatic failover (1 primary + 1 replica by default)
 - Continuous WAL archiving to S3
 - Point-in-time recovery
-- Scheduled backups (daily full, continuous WAL)
+- Scheduled backups
 
 ### Migrations
 
@@ -228,14 +254,12 @@ Drizzle migrations run as a Kubernetes Job before each deployment:
 ```
 Deploy flow:
   1. New image pushed to ECR (by GitHub Actions)
-  2. Platform API detects new image (via ECR webhook or polling)
-  3. Migration Job created in namespace (runs: npx drizzle-kit migrate)
-  4. Job completes → Deployment rolling update begins
-  5. Health check passes → old pods terminated
-  6. Deployment status reported to platform dashboard
+  2. Platform API receives push webhook / is called by CI
+  3. POST /apps/:id/deployments { imageTag } → creates Deployment in k8s
+  4. Migration Job runs pre-deploy (npx drizzle-kit migrate)
+  5. Deployment rolling update proceeds once Job completes
+  6. Status reported to platform dashboard
 ```
-
-Migration history is stored in the `drizzle` table in the app's database and surfaced in the platform UI.
 
 ---
 
@@ -248,25 +272,35 @@ Internet
 Cloudflare
   │
   ▼ CF Access check
-AWS ALB (public-facing, but only CF IP ranges allowed via WAF)
+AWS ALB (public-facing, CF IP ranges only via WAF)
   │
   ▼
 EKS ingress-nginx
   │
-  ├── vibeyeeter-system namespace (platform UI + API)
-  ├── team-a-app-1 namespace
-  ├── team-a-app-2 namespace
-  ├── team-b-app-1 namespace
+  ├── vibeyeeter-system namespace (platform UI + API + tf-runner)
+  ├── vibeyeeter-<app1-id> namespace
+  ├── vibeyeeter-<app2-id> namespace
   └── ...
 ```
 
 Inter-namespace traffic is blocked by NetworkPolicy. Apps cannot reach each other's pods.
 
+**Local dev topology (Rancher Desktop):**
+
+```
+localhost:3000  →  Next.js web (pnpm dev)
+localhost:3002  →  Fastify API (pnpm dev)
+localhost:4001  →  tf-runner (pnpm dev)
+localhost:5432  →  PostgreSQL (docker-compose.dev.yml)
+
+kubectl → rancher-desktop context → k3s cluster (local)
+             ├── vibeyeeter-<appId> namespaces (created by API)
+             └── (no CNPG or ExternalSecrets locally)
+```
+
 ---
 
-## Cost estimates
-
-At ~50 apps on EKS:
+## Cost estimates (production, ~50 apps on EKS)
 
 | Resource | Est. monthly cost |
 |---|---|
@@ -278,11 +312,6 @@ At ~50 apps on EKS:
 | ALB | ~$20 |
 | Cloudflare Access (Teams) | varies by plan |
 | **Total** | **~$600-800/month** |
-
-Cost can be reduced by:
-- Running multiple small apps in shared PG clusters (advanced)
-- Using Fargate Spot for non-critical apps
-- Enabling CNPG cluster hibernation for dev/test apps
 
 ---
 
