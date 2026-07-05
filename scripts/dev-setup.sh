@@ -27,6 +27,7 @@ setup_env() {
 
 setup_env "apps/api"
 setup_env "apps/web"
+setup_env "services/tf-runner"
 
 cat <<'EOF'
 

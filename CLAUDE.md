@@ -125,10 +125,15 @@ via the singleton `getOctokit()` in `client.ts`.
 
 ### `services/tf-runner`
 
-Isolated Node.js service. Exposes `POST /plan`, `POST /apply`, `POST /destroy`.
-Clones repos, runs `terraform` CLI commands, streams output.
+Isolated Node.js service. Exposes `POST /plan`, `POST /apply`, `POST /destroy`,
+`GET /runs/:runId`. Runs `tofu` (OpenTofu, the MPL-licensed Terraform fork —
+same CLI, different binary name) as a child process in an isolated per-run
+temp directory, streams output, and records each run in `tf_runs`.
 Has its own IAM role (IRSA) for S3 state + DynamoDB lock access.
 Only reachable from within the cluster — no external ingress.
+Route paths stay `/plan`, `/apply`, `/destroy` and the dashboard's
+`/apps/[id]/terraform` even though the underlying tool is OpenTofu, to avoid
+churn in the frontend and API contracts.
 
 ---
 

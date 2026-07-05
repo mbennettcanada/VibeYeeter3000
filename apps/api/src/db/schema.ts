@@ -51,6 +51,10 @@ export const deployments = pgTable("deployments", {
   githubDeploymentId: integer("github_deployment_id"),
 });
 
+// Owned by apps/api (migrations live here), but also read/written directly
+// by services/tf-runner against the same Postgres instance — see
+// services/tf-runner/src/db/schema.ts, which mirrors this table definition
+// since that service has no dependency on apps/api.
 export const tfRuns = pgTable("tf_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   appId: uuid("app_id")
@@ -61,6 +65,8 @@ export const tfRuns = pgTable("tf_runs", {
     .notNull()
     .default("pending"),
   planDiff: text("plan_diff"),
+  // Full combined stdout/stderr from the tofu invocation(s) for this run.
+  output: text("output"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
