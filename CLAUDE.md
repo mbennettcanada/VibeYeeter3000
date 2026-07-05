@@ -302,7 +302,7 @@ PORT=4001
 ```bash
 pnpm test                         # all tests
 pnpm --filter @vibeyeeter/api test  # just API tests
-npx tsx scripts/k8s-smoke-test.ts   # end-to-end k8s lifecycle test
+pnpm smoke-test                       # end-to-end k8s lifecycle test
 ```
 
 Test database: use `DATABASE_URL=postgres://localhost/vibeyeeter_test`.

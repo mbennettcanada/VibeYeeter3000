@@ -135,7 +135,7 @@ kubectl cluster-info             # should show the local API server
 # POST /apps will create real namespaces; DELETE /apps/:id removes them.
 
 # Run the full lifecycle smoke test
-npx tsx scripts/k8s-smoke-test.ts
+pnpm smoke-test
 ```
 
 If you switched from a different context (e.g. an EKS cluster):

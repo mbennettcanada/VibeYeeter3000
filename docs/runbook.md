@@ -38,7 +38,7 @@ The smoke test exercises the full app lifecycle against the real local k3s clust
 #   - Postgres running: docker compose -f docker-compose.dev.yml up -d
 #   - psql on PATH (postgres CLI tools)
 
-npx tsx scripts/k8s-smoke-test.ts
+pnpm smoke-test
 ```
 
 The test creates a test app, verifies the namespace appears in k3s, triggers a deployment,
