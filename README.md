@@ -65,7 +65,9 @@ vibeyeeter3000/
 │   ├── platform/     Platform's own Kubernetes manifests
 │   └── app-chart/    Helm chart for managed apps
 ├── scripts/
-│   └── bootstrap.sh  One-time platform setup
+│   ├── bootstrap.sh    One-time platform setup
+│   └── dev-setup.sh    Local dev env bootstrap (.env.local files)
+├── docker-compose.dev.yml  Local Postgres for development
 └── docs/
 ```
 
@@ -76,3 +78,49 @@ vibeyeeter3000/
 See [docs/runbook.md](docs/runbook.md) for setup and operational procedures.
 
 To onboard a new application: see [docs/onboarding.md](docs/onboarding.md).
+
+---
+
+## Local development
+
+From a clean clone:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+cp apps/api/.env.example apps/api/.env.local
+cp apps/web/.env.example apps/web/.env.local
+pnpm install
+pnpm --filter @vibeyeeter/api db:migrate
+pnpm dev
+```
+
+(Or run `./scripts/dev-setup.sh` instead of the two `cp` lines — it does the
+same thing and won't clobber an existing `.env.local`.)
+
+This gets you:
+
+- **Postgres 16** running in Docker on `localhost:5432` (`docker-compose.dev.yml`), with schema applied via `db:migrate`
+- **API** on [http://localhost:3001](http://localhost:3001) — try `GET /health`
+- **Web** on [http://localhost:3000](http://localhost:3000)
+- **tf-runner** on [http://localhost:4000](http://localhost:4000) — try `GET /health`
+
+### No GitHub App or JumpCloud required
+
+The default `apps/api/.env.example` leaves `GITHUB_APP_ID`,
+`GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, and `JUMPCLOUD_SAML_CERT`
+blank. The API starts fine without them — it logs a warning at boot and the
+GitHub webhook / SAML routes simply won't function until those are set.
+
+`DEV_AUTH_BYPASS=true` (set by default in `apps/api/.env.example`) makes
+`requireSession` skip real session validation and attach a fake local admin
+user (`{ id: "local", email: "dev@local", teams: ["dev"], isAdmin: true }`) to
+every request. This lets the web UI and any authenticated API route work
+without a real JumpCloud SSO flow. **Never set this outside local dev.**
+
+### Resetting the local database
+
+```bash
+docker compose -f docker-compose.dev.yml down -v   # drops the postgres volume
+docker compose -f docker-compose.dev.yml up -d
+pnpm --filter @vibeyeeter/api db:migrate
+```

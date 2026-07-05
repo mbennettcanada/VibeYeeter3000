@@ -19,6 +19,7 @@
     "@fastify/session": "^10.9.0",
     "@vibeyeeter/github-app": "workspace:*",
     "@vibeyeeter/types": "workspace:*",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.30.10",
     "fastify": "^4.27.0",
     "postgres": "^3.4.4",

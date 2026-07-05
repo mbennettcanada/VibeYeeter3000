@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import session from "@fastify/session";
+import { config, logOptionalIntegrationWarnings } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
 import { samlRoutes } from "./routes/saml.js";
 import { appsRoutes } from "./routes/apps.js";
@@ -13,14 +14,16 @@ import { webhooksRoutes } from "./routes/webhooks.js";
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
-      level: process.env.LOG_LEVEL ?? "info",
+      level: config.logLevel,
     },
   });
+
+  logOptionalIntegrationWarnings(app.log);
 
   await app.register(cors);
   await app.register(cookie);
   await app.register(session, {
-    secret: process.env.JWT_SECRET ?? "dev-secret-change-me-dev-secret-change-me",
+    secret: config.sessionSecret,
     cookie: { secure: process.env.NODE_ENV === "production" },
   });
 

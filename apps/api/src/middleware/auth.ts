@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { User } from "@vibeyeeter/types";
+import { config } from "../config.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -7,7 +8,19 @@ declare module "fastify" {
   }
 }
 
+const DEV_BYPASS_USER: User = {
+  id: "local",
+  email: "dev@local",
+  teams: ["dev"],
+  isAdmin: true,
+};
+
 export async function requireSession(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (config.devAuthBypass) {
+    request.user = DEV_BYPASS_USER;
+    return;
+  }
+
   // TODO: validate session cookie, load user + team memberships, attach to request.user
   const session = request.session as { userId?: string } | undefined;
 
