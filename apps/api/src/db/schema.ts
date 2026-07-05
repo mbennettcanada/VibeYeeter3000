@@ -103,6 +103,25 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+});
+
+// Hostnames assigned to an app, DNS-managed through Cloudflare (see
+// services/cloudflare.ts). "platform" domains are auto-assigned subdomains
+// of PLATFORM_DOMAIN on app creation; "custom" domains are added manually.
+export const appDomains = pgTable("app_domains", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  appId: uuid("app_id")
+    .notNull()
+    .references(() => apps.id),
+  hostname: text("hostname").notNull().unique(),
+  domainType: text("domain_type", { enum: ["platform", "custom"] }).notNull().default("platform"),
+  dnsStatus: text("dns_status", { enum: ["pending", "active", "error"] }).notNull().default("pending"),
+  certStatus: text("cert_status", { enum: ["pending", "active", "error"] }).notNull().default("pending"),
+  // Cloudflare DNS record id, kept so the record can be cleaned up on delete.
+  cfRecordId: text("cf_record_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
 });
 
 export const teamMembers = pgTable(
@@ -121,10 +140,9 @@ export const teamMembers = pgTable(
   }),
 );
 
-// Maps a team to the SAML IdP group (JumpCloud "memberOf" value, or
-// whichever attribute SAML_GROUPS_ATTRIBUTE points at) that should be
-// synced into membership on every SSO login. A team may have zero or more
-// external groups mapped to it.
+// Maps a team to an external IdP group id that should be synced into
+// membership on every SSO login. A team may have zero or more external
+// groups mapped to it.
 export const teamExternalGroups = pgTable("team_external_groups", {
   id: uuid("id").defaultRandom().primaryKey(),
   teamId: uuid("team_id")

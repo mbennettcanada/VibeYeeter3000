@@ -28,8 +28,9 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
     return;
   }
 
-  // The SAML callback (routes/saml.ts) is what populates session.user on
-  // successful SSO login — this middleware just checks it's still there.
+  // The Cloudflare Access callback (routes/auth.ts) is what populates
+  // session.user on successful SSO login — this middleware just checks
+  // it's still there.
   const user = request.session.user;
   if (!user) {
     reply.code(401).send({ error: "unauthenticated" });

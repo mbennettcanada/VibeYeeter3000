@@ -9,6 +9,7 @@ import { slugify } from "../lib/slug.js";
 import { config, hasGithubAppConfig } from "../config.js";
 import { parseGithubRepoUrl } from "../lib/github-url.js";
 import { renderClaudeMdTemplate } from "../lib/claude-md-template.js";
+import { addDomainToApp } from "../lib/domains.js";
 import {
   isKubernetesConfigured,
   ensureNamespace,
@@ -194,6 +195,17 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
           request.log.error(error);
           warnings.push(
             `Kubernetes provisioning failed: ${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+      }
+
+      if (config.platformDomain) {
+        try {
+          await addDomainToApp(created.id, `${created.slug}.${config.platformDomain}`, request.log, "platform");
+        } catch (error) {
+          request.log.error(error);
+          warnings.push(
+            `Domain assignment failed: ${error instanceof Error ? error.message : "unknown error"}`,
           );
         }
       }

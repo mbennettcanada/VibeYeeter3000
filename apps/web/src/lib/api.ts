@@ -31,7 +31,12 @@ import type {
   ListApiTokensResponse,
   CreateApiTokenRequest,
   CreateApiTokenResponse,
+  ListDomainsResponse,
+  ListAllDomainsResponse,
+  CreateDomainRequest,
+  CreateDomainResponse,
 } from "@vibeyeeter/types";
+import { getCfAccessLoginUrl } from "./cf-access";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
 
@@ -41,6 +46,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+
+  if (response.status === 401 && typeof window !== "undefined") {
+    const loginUrl = getCfAccessLoginUrl(window.location.href);
+    if (loginUrl) {
+      window.location.href = loginUrl;
+    }
+  }
 
   if (!response.ok) {
     let detail: string | undefined;
@@ -197,4 +209,23 @@ export function createApiToken(body: CreateApiTokenRequest): Promise<CreateApiTo
 
 export function revokeApiToken(id: string): Promise<void> {
   return apiFetch(`/settings/tokens/${id}`, { method: "DELETE" });
+}
+
+export function listAllDomains(): Promise<ListAllDomainsResponse> {
+  return apiFetch("/settings/domains");
+}
+
+export function listAppDomains(appId: string): Promise<ListDomainsResponse> {
+  return apiFetch(`/apps/${appId}/domains`);
+}
+
+export function createAppDomain(
+  appId: string,
+  body: CreateDomainRequest,
+): Promise<CreateDomainResponse> {
+  return apiFetch(`/apps/${appId}/domains`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deleteAppDomain(appId: string, domainId: string): Promise<void> {
+  return apiFetch(`/apps/${appId}/domains/${domainId}`, { method: "DELETE" });
 }

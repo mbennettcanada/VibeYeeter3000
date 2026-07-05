@@ -7,6 +7,7 @@ import type { Pod } from "./pod.js";
 import type { Team, TeamWithDetail } from "./team.js";
 import type { User } from "./user.js";
 import type { ApiToken } from "./token.js";
+import type { AppDomain, AppDomainWithApp } from "./domain.js";
 
 export interface ApiErrorResponse {
   error: string;
@@ -170,4 +171,22 @@ export interface CreateApiTokenRequest {
 // The only response that ever includes the plaintext token — shown once.
 export interface CreateApiTokenResponse {
   token: ApiToken & { token: string };
+}
+
+// GET /settings/domains
+export interface ListAllDomainsResponse {
+  domains: AppDomainWithApp[];
+}
+
+// GET /apps/:id/domains
+export interface ListDomainsResponse {
+  domains: AppDomain[];
+}
+
+// POST /apps/:id/domains
+export interface CreateDomainRequest {
+  hostname: string;
+}
+export interface CreateDomainResponse {
+  domain: AppDomain;
 }

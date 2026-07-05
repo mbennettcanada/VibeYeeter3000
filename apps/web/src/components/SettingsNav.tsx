@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/settings/teams", label: "Teams" },
   { href: "/settings/tokens", label: "API Tokens" },
+  { href: "/settings/domains", label: "Domains" },
 ];
 
 export function SettingsNav() {

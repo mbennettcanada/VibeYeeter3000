@@ -7,6 +7,7 @@ const TABS = [
   { href: "", label: "Overview" },
   { href: "/deployments", label: "Deployments" },
   { href: "/secrets", label: "Secrets" },
+  { href: "/domains", label: "Domains" },
   { href: "/terraform", label: "Terraform" },
   { href: "/logs", label: "Logs" },
 ];

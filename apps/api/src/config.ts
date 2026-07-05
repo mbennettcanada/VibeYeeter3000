@@ -27,9 +27,9 @@ export const config = {
   tfRunnerUrl: process.env.TF_RUNNER_URL ?? "http://localhost:4001",
   webAppUrl: process.env.WEB_APP_URL ?? "http://localhost:3000",
   // Base domain for per-app subdomains (e.g. internal.yourcompany.com) and
-  // the platform's own public URL (used for SAML defaults + templated into
-  // app deploy workflows as the deployment webhook target). No default —
-  // both are environment-specific; when unset locally, the affected
+  // the platform's own public URL (templated into app deploy workflows as
+  // the deployment webhook target). No default — both are
+  // environment-specific; when unset locally, the affected
   // features simply fall back or no-op.
   platformDomain: process.env.PLATFORM_DOMAIN,
   platformUrl: process.env.PLATFORM_URL,
@@ -50,13 +50,16 @@ export const config = {
   // platform_tokens rows, for callers that haven't migrated to per-token
   // credentials from /settings/tokens yet.
   legacyApiToken: process.env.VIBEYEETER_API_TOKEN,
-  saml: {
-    entityId: process.env.SAML_ENTITY_ID,
-    idpSsoUrl: process.env.SAML_IDP_SSO_URL,
-    idpCert: process.env.SAML_IDP_CERT,
-    callbackUrl: process.env.SAML_CALLBACK_URL,
-    groupsAttribute: process.env.SAML_GROUPS_ATTRIBUTE ?? "memberOf",
-    idpSloUrl: process.env.SAML_IDP_SLO_URL,
+  // Cloudflare Access — validates the CF_Authorization cookie JWT set by
+  // Cloudflare once a user authenticates through the Zero Trust login flow.
+  cfAccess: {
+    teamDomain: process.env.CF_ACCESS_TEAM_DOMAIN,
+    aud: process.env.CF_ACCESS_AUD,
+  },
+  // Cloudflare API — used to create/delete DNS records for app hostnames.
+  cloudflare: {
+    apiToken: process.env.CF_API_TOKEN,
+    zoneId: process.env.CF_ZONE_ID,
   },
 };
 
@@ -68,9 +71,9 @@ export const hasGithubAppConfig = Boolean(
     config.github.org,
 );
 
-export const hasSamlConfig = Boolean(
-  config.saml.entityId && config.saml.idpSsoUrl && config.saml.idpCert && config.saml.callbackUrl,
-);
+export const hasCfAccessConfig = Boolean(config.cfAccess.teamDomain && config.cfAccess.aud);
+
+export const hasCloudflareDnsConfig = Boolean(config.cloudflare.apiToken && config.cloudflare.zoneId);
 
 export function logOptionalIntegrationWarnings(logger: {
   warn: (msg: string) => void;
@@ -91,9 +94,15 @@ export function logOptionalIntegrationWarnings(logger: {
     );
   }
 
-  if (!hasSamlConfig) {
+  if (!hasCfAccessConfig) {
     logger.warn(
-      "SAML is not configured (SAML_ENTITY_ID / SAML_IDP_SSO_URL / SAML_IDP_CERT / SAML_CALLBACK_URL) — /saml/* routes will not function. Use DEV_AUTH_BYPASS=true for local development.",
+      "Cloudflare Access is not configured (CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD) — /auth/cf-callback will not function. Use DEV_AUTH_BYPASS=true for local development.",
+    );
+  }
+
+  if (!hasCloudflareDnsConfig) {
+    logger.warn(
+      "Cloudflare DNS is not configured (CF_API_TOKEN / CF_ZONE_ID) — domain records will be tracked in the database but DNS records will not be created.",
     );
   }
 

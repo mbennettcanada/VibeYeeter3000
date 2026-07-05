@@ -31,9 +31,9 @@ setup_env "services/tf-runner"
 
 cat <<'EOF'
 
-Local defaults written. GitHub App and JumpCloud SAML credentials are left
-blank — the API starts fine without them (warnings are logged), and
-DEV_AUTH_BYPASS=true stands in for JumpCloud SSO locally.
+Local defaults written. GitHub App and Cloudflare Access/API credentials are
+left blank — the API starts fine without them (warnings are logged), and
+DEV_AUTH_BYPASS=true stands in for Cloudflare Access SSO locally.
 
 Next steps:
   docker compose -f docker-compose.dev.yml up -d
