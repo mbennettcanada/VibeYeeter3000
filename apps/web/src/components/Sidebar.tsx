@@ -17,7 +17,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "#",
+    href: "/settings/teams",
     label: "Settings",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
@@ -87,7 +87,12 @@ export function Sidebar({ user }: { user: User }) {
 
         <nav className="mt-2 flex-1 space-y-0.5 px-3">
           {NAV_ITEMS.map((item) => {
-            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const isActive =
+              item.href === "/"
+                ? pathname === "/"
+                : item.label === "Settings"
+                  ? pathname.startsWith("/settings")
+                  : pathname.startsWith(item.href);
             const isDisabled = item.href === "#";
             return (
               <Link

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { apps, deployments } from "../db/schema.js";
-import { requireSession } from "../middleware/auth.js";
+import { requireSession, requireSessionOrToken } from "../middleware/auth.js";
 import {
   applyDeployment,
   ensureMigrationJob,
@@ -58,7 +58,7 @@ export async function deploymentsRoutes(app: FastifyInstance): Promise<void> {
 
   // The main "deploy" trigger: applies the Deployment manifest for the given
   // image tag and records the attempt as a deployment row.
-  app.post("/apps/:id/deployments", { preHandler: requireSession }, async (request, reply) => {
+  app.post("/apps/:id/deployments", { preHandler: requireSessionOrToken }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const existingApp = await findActiveApp(id);

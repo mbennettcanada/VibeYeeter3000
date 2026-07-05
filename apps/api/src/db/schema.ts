@@ -133,3 +133,18 @@ export const teamExternalGroups = pgTable("team_external_groups", {
   externalGroupId: text("external_group_id").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Only a salted hash of the token is stored — see CLAUDE.md "Secrets — never
+// log, never return values" for the same principle applied here. The plain
+// token is shown to the caller exactly once, at creation time.
+export const platformTokens = pgTable("platform_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  tokenPrefix: text("token_prefix").notNull(),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});

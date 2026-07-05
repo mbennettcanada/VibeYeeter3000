@@ -13,6 +13,8 @@ import { podsRoutes } from "./routes/pods.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { terraformRoutes } from "./routes/terraform.js";
 import { webhooksRoutes } from "./routes/webhooks.js";
+import { settingsTeamsRoutes } from "./routes/settings/teams.js";
+import { settingsTokensRoutes } from "./routes/settings/tokens.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -40,6 +42,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(secretsRoutes);
   await app.register(terraformRoutes);
   await app.register(webhooksRoutes);
+  await app.register(settingsTeamsRoutes);
+  await app.register(settingsTokensRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);

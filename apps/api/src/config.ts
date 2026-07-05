@@ -46,6 +46,10 @@ export const config = {
     // but can differ (e.g. a separate org/user owns the GHCR packages).
     ghcrOrg: process.env.GHCR_ORG ?? process.env.GITHUB_ORG,
   },
+  // Deprecated: a single static token accepted by requireToken alongside
+  // platform_tokens rows, for callers that haven't migrated to per-token
+  // credentials from /settings/tokens yet.
+  legacyApiToken: process.env.VIBEYEETER_API_TOKEN,
   saml: {
     entityId: process.env.SAML_ENTITY_ID,
     idpSsoUrl: process.env.SAML_IDP_SSO_URL,

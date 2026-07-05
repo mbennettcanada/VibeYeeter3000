@@ -6,4 +6,5 @@ export * from "./migration.js";
 export * from "./terraform.js";
 export * from "./pod.js";
 export * from "./user.js";
+export * from "./token.js";
 export * from "./api.js";

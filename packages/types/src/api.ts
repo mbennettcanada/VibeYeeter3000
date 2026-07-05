@@ -4,8 +4,9 @@ import type { Migration } from "./migration.js";
 import type { Secret } from "./secret.js";
 import type { TerraformRun, TerraformRunType } from "./terraform.js";
 import type { Pod } from "./pod.js";
-import type { Team } from "./team.js";
+import type { Team, TeamWithDetail } from "./team.js";
 import type { User } from "./user.js";
+import type { ApiToken } from "./token.js";
 
 export interface ApiErrorResponse {
   error: string;
@@ -124,4 +125,49 @@ export interface ListTeamsResponse {
 // GET /me
 export interface GetCurrentUserResponse {
   user: User;
+}
+
+// GET /settings/teams
+export interface ListTeamsDetailResponse {
+  teams: TeamWithDetail[];
+}
+
+// POST /settings/teams
+export interface CreateTeamRequest {
+  name: string;
+  slug: string;
+}
+export interface CreateTeamResponse {
+  team: TeamWithDetail;
+}
+
+// PATCH /settings/teams/:id
+export interface UpdateTeamRequest {
+  name: string;
+}
+export interface UpdateTeamResponse {
+  team: TeamWithDetail;
+}
+
+// POST /settings/teams/:id/groups
+export interface AddTeamGroupRequest {
+  groupName: string;
+}
+export interface AddTeamGroupResponse {
+  team: TeamWithDetail;
+}
+
+// GET /settings/tokens
+export interface ListApiTokensResponse {
+  tokens: ApiToken[];
+}
+
+// POST /settings/tokens
+export interface CreateApiTokenRequest {
+  name: string;
+  expiresAt?: string;
+}
+// The only response that ever includes the plaintext token — shown once.
+export interface CreateApiTokenResponse {
+  token: ApiToken & { token: string };
 }

@@ -21,6 +21,16 @@ import type {
   CreateTerraformRunResponse,
   ListTeamsResponse,
   GetCurrentUserResponse,
+  ListTeamsDetailResponse,
+  CreateTeamRequest,
+  CreateTeamResponse,
+  UpdateTeamRequest,
+  UpdateTeamResponse,
+  AddTeamGroupRequest,
+  AddTeamGroupResponse,
+  ListApiTokensResponse,
+  CreateApiTokenRequest,
+  CreateApiTokenResponse,
 } from "@vibeyeeter/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
@@ -146,4 +156,45 @@ export function createTerraformRun(
 export function terraformStreamUrl(appId: string, runId?: string): string {
   const query = runId ? `?runId=${runId}` : "";
   return `${API_BASE_URL}/apps/${appId}/terraform/stream${query}`;
+}
+
+export function listTeamsDetail(): Promise<ListTeamsDetailResponse> {
+  return apiFetch("/settings/teams");
+}
+
+export function createTeam(body: CreateTeamRequest): Promise<CreateTeamResponse> {
+  return apiFetch("/settings/teams", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function renameTeam(id: string, body: UpdateTeamRequest): Promise<UpdateTeamResponse> {
+  return apiFetch(`/settings/teams/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function deleteTeam(id: string): Promise<void> {
+  return apiFetch(`/settings/teams/${id}`, { method: "DELETE" });
+}
+
+export function addTeamGroup(
+  id: string,
+  body: AddTeamGroupRequest,
+): Promise<AddTeamGroupResponse> {
+  return apiFetch(`/settings/teams/${id}/groups`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function removeTeamGroup(id: string, groupName: string): Promise<void> {
+  return apiFetch(`/settings/teams/${id}/groups/${encodeURIComponent(groupName)}`, {
+    method: "DELETE",
+  });
+}
+
+export function listApiTokens(): Promise<ListApiTokensResponse> {
+  return apiFetch("/settings/tokens");
+}
+
+export function createApiToken(body: CreateApiTokenRequest): Promise<CreateApiTokenResponse> {
+  return apiFetch("/settings/tokens", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function revokeApiToken(id: string): Promise<void> {
+  return apiFetch(`/settings/tokens/${id}`, { method: "DELETE" });
 }
