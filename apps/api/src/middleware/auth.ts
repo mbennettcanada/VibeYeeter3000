@@ -6,6 +6,9 @@ declare module "fastify" {
   interface FastifyRequest {
     user?: User;
   }
+  interface Session {
+    user?: User;
+  }
 }
 
 const DEV_BYPASS_USER: User = {
@@ -21,13 +24,15 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
     return;
   }
 
-  // TODO: validate session cookie, load user + team memberships, attach to request.user
-  const session = request.session as { userId?: string } | undefined;
-
-  if (!session?.userId) {
+  // The SAML callback (routes/saml.ts) is what populates session.user on
+  // successful SSO login — this middleware just checks it's still there.
+  const user = request.session.user;
+  if (!user) {
     reply.code(401).send({ error: "unauthenticated" });
     return;
   }
+
+  request.user = user;
 }
 
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {

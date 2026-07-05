@@ -14,6 +14,8 @@ import type {
   ListSecretsResponse,
   CreateSecretRequest,
   CreateSecretResponse,
+  UpdateSecretRequest,
+  UpdateSecretResponse,
   ListTerraformRunsResponse,
   CreateTerraformRunRequest,
   CreateTerraformRunResponse,
@@ -31,7 +33,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status} ${path}`);
+    let detail: string | undefined;
+    try {
+      const body = (await response.json()) as { error?: string; detail?: string };
+      detail = body.detail ?? body.error;
+    } catch {
+      // response had no JSON body — fall back to the generic message below
+    }
+    throw new Error(detail ?? `API request failed: ${response.status} ${path}`);
   }
 
   if (response.status === 204) {
@@ -111,6 +120,14 @@ export function createSecret(
   return apiFetch(`/apps/${appId}/secrets`, { method: "POST", body: JSON.stringify(body) });
 }
 
+export function rotateSecret(
+  appId: string,
+  key: string,
+  body: UpdateSecretRequest,
+): Promise<UpdateSecretResponse> {
+  return apiFetch(`/apps/${appId}/secrets/${key}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
 export function deleteSecret(appId: string, key: string): Promise<void> {
   return apiFetch(`/apps/${appId}/secrets/${key}`, { method: "DELETE" });
 }
@@ -124,4 +141,9 @@ export function createTerraformRun(
   body: CreateTerraformRunRequest,
 ): Promise<CreateTerraformRunResponse> {
   return apiFetch(`/apps/${appId}/terraform`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function terraformStreamUrl(appId: string, runId?: string): string {
+  const query = runId ? `?runId=${runId}` : "";
+  return `${API_BASE_URL}/apps/${appId}/terraform/stream${query}`;
 }

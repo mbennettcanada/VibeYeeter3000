@@ -13,7 +13,9 @@ const jwtSecret = required("JWT_SECRET", "local-dev-secret");
 
 // @fastify/session requires a secret of at least 32 characters; pad short
 // (e.g. local dev) secrets deterministically rather than rejecting them.
-const sessionSecret = jwtSecret.padEnd(32, "0");
+// SESSION_SECRET is the dedicated secret for signing the session cookie —
+// falls back to JWT_SECRET so existing local setups keep working.
+const sessionSecret = required("SESSION_SECRET", jwtSecret).padEnd(32, "0");
 
 export const config = {
   port: Number(process.env.PORT ?? 3002),
@@ -23,6 +25,7 @@ export const config = {
   sessionSecret,
   devAuthBypass: process.env.DEV_AUTH_BYPASS === "true",
   tfRunnerUrl: process.env.TF_RUNNER_URL ?? "http://localhost:4001",
+  webAppUrl: process.env.WEB_APP_URL ?? "http://localhost:3000",
   github: {
     appId: process.env.GITHUB_APP_ID,
     privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
@@ -31,9 +34,12 @@ export const config = {
     org: process.env.GITHUB_ORG ?? "acme",
   },
   saml: {
-    cert: process.env.JUMPCLOUD_SAML_CERT,
-    spEntityId: process.env.SAML_SP_ENTITY_ID,
+    entityId: process.env.SAML_ENTITY_ID,
+    idpSsoUrl: process.env.SAML_IDP_SSO_URL,
+    idpCert: process.env.SAML_IDP_CERT,
     callbackUrl: process.env.SAML_CALLBACK_URL,
+    groupsAttribute: process.env.SAML_GROUPS_ATTRIBUTE ?? "memberOf",
+    idpSloUrl: process.env.SAML_IDP_SLO_URL,
   },
 };
 
@@ -45,7 +51,7 @@ export const hasGithubAppConfig = Boolean(
 );
 
 export const hasSamlConfig = Boolean(
-  config.saml.cert && config.saml.spEntityId && config.saml.callbackUrl,
+  config.saml.entityId && config.saml.idpSsoUrl && config.saml.idpCert && config.saml.callbackUrl,
 );
 
 export function logOptionalIntegrationWarnings(logger: {
@@ -63,7 +69,7 @@ export function logOptionalIntegrationWarnings(logger: {
 
   if (!hasSamlConfig) {
     logger.warn(
-      "JumpCloud SAML is not configured (JUMPCLOUD_SAML_CERT / SAML_SP_ENTITY_ID / SAML_CALLBACK_URL) — /saml/* routes will not function. Use DEV_AUTH_BYPASS=true for local development.",
+      "SAML is not configured (SAML_ENTITY_ID / SAML_IDP_SSO_URL / SAML_IDP_CERT / SAML_CALLBACK_URL) — /saml/* routes will not function. Use DEV_AUTH_BYPASS=true for local development.",
     );
   }
 

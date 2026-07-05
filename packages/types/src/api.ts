@@ -94,6 +94,15 @@ export interface CreateSecretResponse {
   secret: Secret;
 }
 
+// PUT /apps/:id/secrets/:key
+export interface UpdateSecretRequest {
+  value: string;
+}
+export interface UpdateSecretResponse {
+  secret: Secret;
+  restart?: { deploymentId: string };
+}
+
 // GET /apps/:id/terraform
 export interface ListTerraformRunsResponse {
   runs: TerraformRun[];

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
+import formbody from "@fastify/formbody";
 import session from "@fastify/session";
 import { config, logOptionalIntegrationWarnings } from "./config.js";
 import { registerRawBodyCapture } from "./plugins/raw-body.js";
@@ -25,6 +26,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(cors);
   await app.register(cookie);
+  await app.register(formbody);
   await app.register(session, {
     secret: config.sessionSecret,
     cookie: { secure: process.env.NODE_ENV === "production" },
