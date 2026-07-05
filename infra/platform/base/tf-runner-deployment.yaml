@@ -1,0 +1,54 @@
+# tf-runner is stateful per run (isolated per-run temp directory on the pod
+# filesystem) — do not scale it horizontally beyond 1 replica.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tf-runner
+  namespace: vibeyeeter-system
+  labels:
+    app: tf-runner
+    app.kubernetes.io/part-of: vibeyeeter
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tf-runner
+  template:
+    metadata:
+      labels:
+        app: tf-runner
+        app.kubernetes.io/part-of: vibeyeeter
+    spec:
+      serviceAccountName: tf-runner
+      containers:
+        - name: tf-runner
+          image: ghcr.io/your-org/vibeyeeter-tf-runner:latest
+          ports:
+            - containerPort: 4001
+          envFrom:
+            - secretRef:
+                name: vibeyeeter-platform-secrets
+          env:
+            - name: PORT
+              value: "4001"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: 256Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 5
+            periodSeconds: 5

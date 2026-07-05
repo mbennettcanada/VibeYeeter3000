@@ -21,12 +21,13 @@ const APP_TEMPLATE_FILES = [
 
 function renderAppTemplate(
   content: string,
-  vars: { appId: string; subdomain: string; org: string },
+  vars: { appId: string; subdomain: string; org: string; platformUrl: string },
 ): string {
   return content
     .replaceAll("{{APP_ID}}", vars.appId)
     .replaceAll("{{SUBDOMAIN}}", vars.subdomain)
-    .replaceAll("{{ORG}}", vars.org);
+    .replaceAll("{{ORG}}", vars.org)
+    .replaceAll("{{PLATFORM_URL}}", vars.platformUrl);
 }
 
 export interface CreatedRepo {
@@ -181,17 +182,19 @@ export async function updateDeploymentStatus(
 
 // Pushes the Dockerfile, deploy workflow, and Helm values override from
 // infra/app-templates into a newly registered app's repo, with
-// {{APP_ID}} / {{SUBDOMAIN}} / {{ORG}} placeholders filled in. Called
-// once at app registration time (see POST /apps in apps/api).
+// {{APP_ID}} / {{SUBDOMAIN}} / {{ORG}} / {{PLATFORM_URL}} placeholders
+// filled in. Called once at app registration time (see POST /apps in
+// apps/api).
 export async function pushAppTemplates(
   repo: string,
   org: string,
   appId: string,
   subdomain: string,
+  platformUrl: string,
 ): Promise<void> {
   for (const relativePath of APP_TEMPLATE_FILES) {
     const raw = readFileSync(nodePath.join(APP_TEMPLATES_DIR, relativePath), "utf-8");
-    const rendered = renderAppTemplate(raw, { appId, subdomain, org });
+    const rendered = renderAppTemplate(raw, { appId, subdomain, org, platformUrl });
     await pushFile(repo, relativePath, rendered, `chore: add ${relativePath}`);
   }
 }

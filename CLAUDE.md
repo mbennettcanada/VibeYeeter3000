@@ -255,18 +255,25 @@ own copy of the table schema — no dependency on `apps/api`).
 # Required
 DATABASE_URL=                        # Platform's own Postgres
 JWT_SECRET=                          # Session signing key (≥32 chars)
+GITHUB_ORG=                          # GitHub org repos are provisioned into — no default, must be set explicitly
+
+# Platform identity (no defaults — environment-specific)
+PLATFORM_DOMAIN=                     # Base domain for per-app subdomains, e.g. internal.yourcompany.com
+PLATFORM_URL=                        # Platform's own URL, e.g. https://vibeyeeter.internal.yourcompany.com
+                                      # Used for SAML defaults and as the deployment webhook target
+                                      # templated into generated app deploy workflows.
+GHCR_ORG=                            # GitHub org used for container image pushes (defaults to GITHUB_ORG)
 
 # GitHub App (all optional locally — API starts without them, logs a warning)
 GITHUB_APP_ID=                       # GitHub App numeric ID
 GITHUB_APP_PRIVATE_KEY=              # PEM private key, base64-encoded
-GITHUB_APP_INSTALLATION_ID=          # Installation ID on mbennettcanada org
+GITHUB_APP_INSTALLATION_ID=          # Installation ID on your GitHub org
 GITHUB_WEBHOOK_SECRET=               # Webhook HMAC secret
-GITHUB_ORG=mbennettcanada            # GitHub org for repo provisioning
 
 # JumpCloud SAML (optional locally — use DEV_AUTH_BYPASS=true instead)
 JUMPCLOUD_SAML_CERT=                 # JumpCloud IdP certificate
-SAML_SP_ENTITY_ID=                   # https://vibeyeeter.internal.co/saml/metadata
-SAML_CALLBACK_URL=                   # https://vibeyeeter.internal.co/saml/callback
+SAML_SP_ENTITY_ID=                   # e.g. ${PLATFORM_URL}/saml/metadata
+SAML_CALLBACK_URL=                   # e.g. ${PLATFORM_URL}/saml/callback
 
 AWS_REGION=us-east-1
 TF_RUNNER_URL=http://localhost:4001  # Internal only (http://tf-runner:4001 in cluster)

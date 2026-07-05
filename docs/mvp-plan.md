@@ -44,7 +44,7 @@ Everything else is post-MVP.
 ### Week 3-4: GitHub App + App Registration
 
 **GitHub App (`vibeyeeter-bot`)**
-- [x] Register GitHub App on `mbennettcanada` org
+- [x] Register GitHub App on `your-org` org
 - [x] Webhook server in `packages/github-app` handling:
   - `push` to main → create GitHub Deployment, trigger platform deploy
   - `pull_request` opened/updated → trigger tf-plan

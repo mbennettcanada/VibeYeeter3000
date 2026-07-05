@@ -88,54 +88,94 @@ aws dynamodb create-table \
   --region us-east-1
 ```
 
+Create the platform's own credentials in AWS Secrets Manager — the
+`ExternalSecret` in `infra/platform/base/externalsecret.yaml` expects one
+secret per key under the `vibeyeeter/platform/` prefix:
+
+```bash
+aws secretsmanager create-secret --name vibeyeeter/platform/DATABASE_URL --secret-string "<postgres-url>"
+aws secretsmanager create-secret --name vibeyeeter/platform/SESSION_SECRET --secret-string "<32+ char secret>"
+aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_ID --secret-string "<numeric app id>"
+aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_PRIVATE_KEY --secret-string "<base64-encoded PEM>"
+aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_INSTALLATION_ID --secret-string "<installation id>"
+aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_WEBHOOK_SECRET --secret-string "<webhook HMAC secret>"
+aws secretsmanager create-secret --name vibeyeeter/platform/SAML_ENTITY_ID --secret-string "<SP entity id>"
+aws secretsmanager create-secret --name vibeyeeter/platform/SAML_IDP_SSO_URL --secret-string "<JumpCloud SSO URL>"
+aws secretsmanager create-secret --name vibeyeeter/platform/SAML_IDP_CERT --secret-string "<JumpCloud IdP certificate PEM>"
+aws secretsmanager create-secret --name vibeyeeter/platform/TF_RUNNER_DATABASE_URL --secret-string "<postgres-url>"
+```
+
 ### 2. Provision EKS cluster
 
 ```bash
-cd infra/platform
+cd infra/cluster
 tofu init
 tofu plan
 tofu apply
 ```
 
 This creates:
-- EKS cluster (3× m5.xlarge, us-east-1)
-- VPC with private subnets
-- ALB + ACM certificate
-- ECR lifecycle policy
-- IAM roles for platform components (IRSA)
+- EKS cluster and VPC with private subnets
+- IRSA roles for `platform-api` and `tf-runner` (note the two role ARNs in
+  the `tofu apply` output — `deploy-platform.sh` needs them)
+- The `cloudnative-pg`, `external-secrets`, and `ingress-nginx` cluster
+  operators (via `infra/cluster/operators.tf`)
+- Cloudflare Access application gating `*.<PLATFORM_DOMAIN>` ingress
 
-### 3. Install cluster components
-
-```bash
-# Update kubeconfig
-aws eks update-kubeconfig --name vibeyeeter --region us-east-1
-
-# Install components via Helm
-helm repo add jetstack https://charts.jetstack.io
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo add cnpg https://cloudnative-pg.github.io/charts
-helm repo add external-secrets https://charts.external-secrets.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set installCRDs=true
-helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
-helm install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace
-helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
-
-# Create platform namespace
-kubectl create namespace vibeyeeter-system
-```
-
-### 4. Run database migrations
+### 3. Point kubectl at the new cluster
 
 ```bash
-# Apply platform DB schema
-DATABASE_URL=postgres://<host>/vibeyeeter pnpm --filter @vibeyeeter/api db:migrate
+aws eks update-kubeconfig --name <cluster-name> --region us-east-1
+kubectl cluster-info
 ```
 
-### 5. Register GitHub App
+The `aws-secrets-manager` `ClusterSecretStore` (used by both this
+`ExternalSecret` and every per-app one) must exist before continuing — see
+your External Secrets Operator setup for how that store's IAM trust is
+configured for this cluster.
 
-1. Go to `https://github.com/organizations/mbennettcanada/settings/apps/new`
+### 4. Build and push platform images
+
+Push to `main` and let `.github/workflows/build-and-push.yml` build and push
+`ghcr.io/<org>/vibeyeeter-{api,web,tf-runner}:<sha>`, or build locally:
+
+```bash
+docker build -f apps/api/Dockerfile -t ghcr.io/your-org/vibeyeeter-api:latest .
+docker build -f apps/web/Dockerfile -t ghcr.io/your-org/vibeyeeter-web:latest .
+docker build -f services/tf-runner/Dockerfile -t ghcr.io/your-org/vibeyeeter-tf-runner:latest .
+docker push ghcr.io/your-org/vibeyeeter-api:latest
+docker push ghcr.io/your-org/vibeyeeter-web:latest
+docker push ghcr.io/your-org/vibeyeeter-tf-runner:latest
+```
+
+### 5. Apply platform manifests and verify
+
+```bash
+GITHUB_ORG=your-org \
+PLATFORM_DOMAIN=internal.yourcompany.com \
+PLATFORM_URL=https://vibeyeeter.internal.yourcompany.com \
+PLATFORM_API_IRSA_ROLE_ARN=<from tofu output> \
+TF_RUNNER_IRSA_ROLE_ARN=<from tofu output> \
+./scripts/deploy-platform.sh
+```
+
+This applies `infra/platform/base/`, waits for the three Deployments to roll
+out, and prints the dashboard/API URLs. Verify:
+
+```bash
+kubectl get pods -n vibeyeeter-system
+curl https://vibeyeeter-api.internal.yourcompany.com/health
+```
+
+### 6. Run database migrations
+
+```bash
+DATABASE_URL=<platform-postgres-url> pnpm --filter @vibeyeeter/api db:migrate
+```
+
+### 7. Register GitHub App
+
+1. Go to `https://github.com/organizations/your-org/settings/apps/new`
 2. App name: `vibeyeeter-bot`
 3. Homepage URL: `https://vibeyeeter.internal.yourcompany.com`
 4. Webhook URL: `https://vibeyeeter.internal.yourcompany.com/api/webhooks/github`
@@ -148,9 +188,9 @@ DATABASE_URL=postgres://<host>/vibeyeeter pnpm --filter @vibeyeeter/api db:migra
    ```
    Store as `GITHUB_APP_PRIVATE_KEY` in the API's environment.
 9. Note the App ID → `GITHUB_APP_ID`
-10. Install the app on the `mbennettcanada` org → note the Installation ID → `GITHUB_APP_INSTALLATION_ID`
+10. Install the app on the `your-org` org → note the Installation ID → `GITHUB_APP_INSTALLATION_ID`
 
-### 6. Configure JumpCloud SAML
+### 8. Configure JumpCloud SAML
 
 1. In JumpCloud admin: Applications → Add Application → Custom SAML App
 2. Display name: `VibeYeeter3000`
@@ -161,7 +201,13 @@ DATABASE_URL=postgres://<host>/vibeyeeter pnpm --filter @vibeyeeter/api db:migra
    - `email` → user email
    - `groups` → user's JumpCloud group names
 
-### 7. Set all required environment variables
+### 9. Set all required environment variables
+
+Most of these are already covered by the Secrets Manager entries in step 1
+(synced in automatically via ExternalSecret) and the `PLATFORM_*`/`GITHUB_ORG`
+values passed to `deploy-platform.sh` in step 5. This is the full reference
+if you're running a service outside the cluster (e.g. debugging locally
+against production data):
 
 **API (`apps/api/.env` or Kubernetes secret):**
 
@@ -174,7 +220,7 @@ GITHUB_APP_ID=<numeric app id>
 GITHUB_APP_PRIVATE_KEY=<base64-encoded PEM>
 GITHUB_APP_INSTALLATION_ID=<installation id>
 GITHUB_WEBHOOK_SECRET=<webhook HMAC secret>
-GITHUB_ORG=mbennettcanada
+GITHUB_ORG=your-org
 
 # JumpCloud SAML
 JUMPCLOUD_SAML_CERT=<IdP certificate PEM>
@@ -199,19 +245,6 @@ LOG_LEVEL=info
 PORT=4001
 ```
 
-### 8. Deploy the platform
-
-```bash
-# Build and push platform images
-docker build -t <account>.dkr.ecr.us-east-1.amazonaws.com/vibeyeeter-web:latest apps/web
-docker build -t <account>.dkr.ecr.us-east-1.amazonaws.com/vibeyeeter-api:latest apps/api
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/vibeyeeter-web:latest
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/vibeyeeter-api:latest
-
-# Apply platform manifests
-kubectl apply -k k8s/platform/
-```
-
 ---
 
 ## Day-to-day operations
@@ -220,8 +253,8 @@ kubectl apply -k k8s/platform/
 
 ```bash
 kubectl get pods -n vibeyeeter-system
-kubectl logs -n vibeyeeter-system deploy/vibeyeeter-api --tail=50
-kubectl logs -n vibeyeeter-system deploy/vibeyeeter-web --tail=50
+kubectl logs -n vibeyeeter-system deploy/api --tail=50
+kubectl logs -n vibeyeeter-system deploy/web --tail=50
 ```
 
 ### Check a specific app
@@ -249,7 +282,7 @@ If the platform UI is unavailable:
 aws ecr describe-images --repository-name <app> --query 'sort_by(imageDetails,&imagePushedAt)[-10:].imageTags'
 
 # Update helm values to previous tag
-helm upgrade <app> k8s/app-chart \
+helm upgrade <app> infra/helm-chart \
   --namespace vibeyeeter-<appId> \
   --set image.tag=<previous-tag> \
   --reuse-values
@@ -282,7 +315,7 @@ kubectl rollout restart deployment/app -n vibeyeeter-<appId>
 
 ```bash
 cd /tmp
-git clone https://github.com/mbennettcanada/<app>
+git clone https://github.com/your-org/<app>
 cd <app>/infra
 
 # Backend config is already in backend.tf

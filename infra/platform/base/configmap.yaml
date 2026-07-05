@@ -1,0 +1,15 @@
+# Non-secret platform configuration. Edit these values (or override via a
+# kustomize patch / overlay) before applying — none of them have safe
+# defaults for a real deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vibeyeeter-platform-config
+  namespace: vibeyeeter-system
+data:
+  GITHUB_ORG: "your-org"
+  GHCR_ORG: "your-org"
+  PLATFORM_DOMAIN: "internal.yourcompany.com"
+  PLATFORM_URL: "https://vibeyeeter.internal.yourcompany.com"
+  SAML_GROUPS_ATTRIBUTE: "memberOf"
+  NEXT_PUBLIC_API_URL: "https://vibeyeeter-api.internal.yourcompany.com"

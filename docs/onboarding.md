@@ -6,7 +6,7 @@ This guide walks through registering a new application with VibeYeeter3000.
 
 ## Prerequisites
 
-- A GitHub repo under the `mbennettcanada` org (or a repo the `vibeyeeter-bot` GitHub App has access to)
+- A GitHub repo under the `your-org` org (or a repo the `vibeyeeter-bot` GitHub App has access to)
 - The repo must have a `main` branch
 - You must be logged into the platform with a JumpCloud account that belongs to the team you're registering the app under
 - An admin must have pre-created your team if it doesn't exist yet
@@ -19,7 +19,7 @@ When you register an app (`POST /apps`), the platform:
 
 1. Creates a row in the `apps` table (name, slug, teamId, repoUrl, namespace, subdomain)
 2. Provisions GitHub (if `GITHUB_APP_ID` is configured):
-   - Creates the repo in the `mbennettcanada` org (if it doesn't exist)
+   - Creates the repo in the `your-org` org (if it doesn't exist)
    - Pushes `CLAUDE.md` to the repo via `vibeyeeter-bot`
 3. Provisions Kubernetes (if a kubeconfig is present):
    - Creates a Namespace: `vibeyeeter-<appId>` (where `<appId>` is the app's UUID)
@@ -49,7 +49,7 @@ Content-Type: application/json
   "name": "Lead Tracker",
   "teamId": "<uuid of the team>",
   "subdomain": "lead-tracker",
-  "repoUrl": "https://github.com/mbennettcanada/lead-tracker"
+  "repoUrl": "https://github.com/your-org/lead-tracker"
 }
 ```
 
@@ -67,7 +67,7 @@ Content-Type: application/json
     "name": "Lead Tracker",
     "slug": "lead-tracker",
     "teamId": "<uuid>",
-    "repoUrl": "https://github.com/mbennettcanada/lead-tracker",
+    "repoUrl": "https://github.com/your-org/lead-tracker",
     "namespace": "lead-tracker",
     "subdomain": "lead-tracker",
     "createdAt": "2024-01-15T12:00:00.000Z",
@@ -87,7 +87,7 @@ optional integrations were skipped (GitHub, Kubernetes) — the app row is still
 If starting from scratch, use the app template:
 
 ```bash
-gh repo create mbennettcanada/my-app --template mbennettcanada/app-template --private
+gh repo create your-org/my-app --template your-org/app-template --private
 cd my-app
 ```
 
@@ -103,7 +103,7 @@ If onboarding an existing repo, make sure it has:
 1. Log into the platform at `https://vibeyeeter.internal.yourcompany.com`
 2. Click **New Application**
 3. Fill in:
-   - **GitHub repo**: `mbennettcanada/my-app`
+   - **GitHub repo**: `your-org/my-app`
    - **Team**: select your team
    - **App name**: human-readable name (e.g. "Lead Tracker")
    - **Subdomain**: the internal URL prefix (e.g. `lead-tracker` → `lead-tracker.internal.yourcompany.com`)

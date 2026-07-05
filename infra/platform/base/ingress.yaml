@@ -1,0 +1,34 @@
+# Internal-only ingress — both hosts are only reachable behind Cloudflare
+# Access / the internal network. tf-runner is deliberately not exposed here
+# (see CLAUDE.md: "Only reachable from within the cluster — no external
+# ingress"). ${PLATFORM_DOMAIN} is substituted by scripts/deploy-platform.sh
+# from the PLATFORM_DOMAIN env var.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vibeyeeter-platform
+  namespace: vibeyeeter-system
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: "vibeyeeter.${PLATFORM_DOMAIN}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 3000
+    - host: "vibeyeeter-api.${PLATFORM_DOMAIN}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3002

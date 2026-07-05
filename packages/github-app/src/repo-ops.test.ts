@@ -175,7 +175,13 @@ describe("pushAppTemplates", () => {
       ),
     );
 
-    await pushAppTemplates("acme/widget-factory", "acme", "app-123", "widget-factory");
+    await pushAppTemplates(
+      "acme/widget-factory",
+      "acme",
+      "app-123",
+      "widget-factory",
+      "https://vibeyeeter.example.com",
+    );
 
     expect(Object.keys(pushed).sort()).toEqual(
       [".github/workflows/deploy.yml", "Dockerfile", "helm/values.yaml"].sort(),
@@ -184,7 +190,9 @@ describe("pushAppTemplates", () => {
     expect(pushed["helm/values.yaml"]).toContain('subdomain: "widget-factory"');
     expect(pushed["helm/values.yaml"]).toContain("ghcr.io/acme/widget-factory");
     expect(pushed[".github/workflows/deploy.yml"]).toContain("ghcr.io/acme/");
-    expect(pushed[".github/workflows/deploy.yml"]).toContain("/apps/app-123/deployments");
+    expect(pushed[".github/workflows/deploy.yml"]).toContain(
+      "https://vibeyeeter.example.com/apps/app-123/deployments",
+    );
     expect(pushed["Dockerfile"]).not.toContain("{{");
   });
 });

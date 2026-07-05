@@ -37,7 +37,7 @@ jobs:
           VIBEYEETER_API_TOKEN: ${{ secrets.VIBEYEETER_API_TOKEN }}
         run: |
           curl --fail-with-body -sS -X POST \
-            "https://vibeyeeter.internal.co/apps/{{APP_ID}}/deployments" \
+            "{{PLATFORM_URL}}/apps/{{APP_ID}}/deployments" \
             -H "Authorization: Bearer ${VIBEYEETER_API_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"imageTag\": \"${{ env.IMAGE }}:${{ github.sha }}\"}"

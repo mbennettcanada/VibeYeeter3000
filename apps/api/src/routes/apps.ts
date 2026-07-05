@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { apps, teams } from "../db/schema.js";
 import { requireSession } from "../middleware/auth.js";
 import { slugify } from "../lib/slug.js";
-import { hasGithubAppConfig } from "../config.js";
+import { config, hasGithubAppConfig } from "../config.js";
 import { parseGithubRepoUrl } from "../lib/github-url.js";
 import { renderClaudeMdTemplate } from "../lib/claude-md-template.js";
 import {
@@ -168,7 +168,13 @@ export async function appsRoutes(app: FastifyInstance): Promise<void> {
 
         try {
           const { owner, repo } = parseGithubRepoUrl(repoUrl);
-          await pushAppTemplates(`${owner}/${repo}`, owner, created.id, subdomain);
+          await pushAppTemplates(
+            `${owner}/${repo}`,
+            owner,
+            created.id,
+            subdomain,
+            config.platformUrl ?? config.webAppUrl,
+          );
         } catch (error) {
           request.log.error(error);
           warnings.push(

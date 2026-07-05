@@ -260,7 +260,7 @@ async function main(): Promise<void> {
       name: appName,
       teamId,
       subdomain,
-      repoUrl: `https://github.com/mbennettcanada/smoke-test-${ts}`,
+      repoUrl: `https://github.com/${process.env.GITHUB_ORG ?? "your-org"}/smoke-test-${ts}`,
     });
 
     if (createStatus !== 201) {

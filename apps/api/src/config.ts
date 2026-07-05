@@ -26,12 +26,25 @@ export const config = {
   devAuthBypass: process.env.DEV_AUTH_BYPASS === "true",
   tfRunnerUrl: process.env.TF_RUNNER_URL ?? "http://localhost:4001",
   webAppUrl: process.env.WEB_APP_URL ?? "http://localhost:3000",
+  // Base domain for per-app subdomains (e.g. internal.yourcompany.com) and
+  // the platform's own public URL (used for SAML defaults + templated into
+  // app deploy workflows as the deployment webhook target). No default —
+  // both are environment-specific; when unset locally, the affected
+  // features simply fall back or no-op.
+  platformDomain: process.env.PLATFORM_DOMAIN,
+  platformUrl: process.env.PLATFORM_URL,
   github: {
     appId: process.env.GITHUB_APP_ID,
     privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
     installationId: process.env.GITHUB_APP_INSTALLATION_ID,
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
-    org: process.env.GITHUB_ORG ?? "acme",
+    // No default — every deployment provisions into a different GitHub
+    // org, so silently falling back to a placeholder would provision real
+    // repos into the wrong place.
+    org: process.env.GITHUB_ORG,
+    // Org used for container image pushes; usually the same as GITHUB_ORG
+    // but can differ (e.g. a separate org/user owns the GHCR packages).
+    ghcrOrg: process.env.GHCR_ORG ?? process.env.GITHUB_ORG,
   },
   saml: {
     entityId: process.env.SAML_ENTITY_ID,
@@ -47,7 +60,8 @@ export const hasGithubAppConfig = Boolean(
   config.github.appId &&
     config.github.privateKey &&
     config.github.installationId &&
-    config.github.webhookSecret,
+    config.github.webhookSecret &&
+    config.github.org,
 );
 
 export const hasSamlConfig = Boolean(
@@ -63,7 +77,13 @@ export function logOptionalIntegrationWarnings(logger: {
 
   if (!hasGithubAppConfig) {
     logger.warn(
-      "GitHub App credentials are not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY / GITHUB_APP_INSTALLATION_ID / GITHUB_WEBHOOK_SECRET) — webhook and repo-op routes will not function.",
+      "GitHub App credentials are not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY / GITHUB_APP_INSTALLATION_ID / GITHUB_WEBHOOK_SECRET / GITHUB_ORG) — webhook and repo-op routes will not function.",
+    );
+  }
+
+  if (!config.platformUrl) {
+    logger.warn(
+      "PLATFORM_URL is not configured — generated app deploy workflows will not know where to POST deployment webhooks.",
     );
   }
 

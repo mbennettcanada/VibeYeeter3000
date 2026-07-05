@@ -1,7 +1,7 @@
 appId: ""
 
 image:
-  repository: ghcr.io/mbennettcanada/placeholder
+  repository: ghcr.io/your-org/placeholder
   tag: latest
   pullPolicy: Always
 

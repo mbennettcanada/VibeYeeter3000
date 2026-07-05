@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: vibeyeeter-system
+  labels:
+    app: web
+    app.kubernetes.io/part-of: vibeyeeter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        app.kubernetes.io/part-of: vibeyeeter
+    spec:
+      serviceAccountName: web
+      containers:
+        - name: web
+          image: ghcr.io/your-org/vibeyeeter-web:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: vibeyeeter-platform-config
+          env:
+            - name: PORT
+              value: "3000"
+            - name: NEXT_PUBLIC_API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: vibeyeeter-platform-config
+                  key: NEXT_PUBLIC_API_URL
+          resources:
+            requests:
+              cpu: "250m"
+              memory: 256Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5

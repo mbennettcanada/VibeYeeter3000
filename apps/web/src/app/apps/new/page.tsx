@@ -9,7 +9,7 @@ import { mockTeams } from "@/lib/mock-data";
 import { createApp } from "@/lib/api";
 import { slugify } from "@/lib/format";
 
-const GITHUB_ORG = "mbennettcanada";
+const GITHUB_ORG = process.env.NEXT_PUBLIC_GITHUB_ORG ?? "your-org";
 
 const PROGRESS_STEPS = [
   { key: "db", label: "Creating DB record" },

@@ -75,7 +75,7 @@ except `GET /health` and `/saml/*`.
 
 ### GitHub App (`vibeyeeter-bot`)
 
-Installed on the `mbennettcanada` GitHub org. The platform's identity in GitHub.
+Installed on the `your-org` GitHub org. The platform's identity in GitHub.
 
 **Permissions:** Contents (R/W), Workflows (W), Pull requests (W), Deployments (W).
 **Events:** push, pull_request, deployment_status.
@@ -142,7 +142,7 @@ In production, additional resources are created per namespace:
 - NetworkPolicy (deny cross-namespace traffic)
 - ServiceAccount with IRSA annotation
 
-### Helm chart (`k8s/app-chart`)
+### Helm chart (`infra/helm-chart`)
 
 One shared Helm chart for all managed apps. Per-app configuration lives in
 `helm/values.yaml` in each app repo (pushed and maintained by the platform).
@@ -150,7 +150,7 @@ One shared Helm chart for all managed apps. Per-app configuration lives in
 Key values:
 ```yaml
 image:
-  repository: <account>.dkr.ecr.us-east-1.amazonaws.com/<app>
+  repository: ghcr.io/<org>/<app>
   tag: latest          # updated on each deploy
   pullPolicy: Always
 
