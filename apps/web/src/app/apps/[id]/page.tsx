@@ -34,7 +34,7 @@ export default function AppOverviewPage({ params }: { params: { id: string } }) 
           </>
         }
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link href={`/apps/${app.id}/logs`}>
               <Button variant="secondary">View logs</Button>
             </Link>

@@ -26,7 +26,7 @@ export function ToastStack({
   onDismiss: (id: number) => void;
 }) {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <div className="fixed inset-x-4 bottom-4 z-50 flex flex-col items-stretch gap-2 sm:inset-x-auto sm:right-4 sm:items-end">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={() => onDismiss(toast.id)} />
       ))}
@@ -42,7 +42,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
 
   return (
     <div
-      className={`flex max-w-sm items-start gap-2 rounded-lg px-4 py-3 text-sm shadow-lg ring-1 ring-inset ${
+      className={`flex w-full items-start gap-2 rounded-lg px-4 py-3 text-sm shadow-lg ring-1 ring-inset sm:max-w-sm ${
         toast.type === "error"
           ? "bg-red-600 text-white ring-red-700"
           : "bg-emerald-600 text-white ring-emerald-700"

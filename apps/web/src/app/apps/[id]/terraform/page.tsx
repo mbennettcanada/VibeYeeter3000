@@ -113,12 +113,12 @@ export default function TerraformPage({ params }: { params: { id: string } }) {
       <AppNav appId={app.id} />
 
       <div className="mb-8 rounded-lg border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Latest plan</h2>
             <p className="text-xs text-slate-500">Generated {timeAgo(runs[0]?.createdAt ?? new Date().toISOString())}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-500">
               <span className="font-medium text-emerald-600">1 to add</span> ·{" "}
               <span className="font-medium text-amber-600">2 to change</span> ·{" "}
@@ -151,7 +151,7 @@ export default function TerraformPage({ params }: { params: { id: string } }) {
       )}
 
       <h2 className="mb-3 text-sm font-semibold text-slate-900">Run history</h2>
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
