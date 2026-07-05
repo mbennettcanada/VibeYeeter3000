@@ -26,7 +26,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   logOptionalIntegrationWarnings(app.log);
   registerRawBodyCapture(app);
 
-  await app.register(cors);
+  await app.register(cors, {
+    origin: config.webAppUrl,
+    credentials: true,
+  });
   await app.register(cookie);
   await app.register(formbody);
   await app.register(session, {
