@@ -27,12 +27,12 @@ See `docs/architecture.md` for the full system design.
 vibeyeeter3000/
 ├── apps/
 │   ├── web/              Next.js 14 control plane UI (port 3000 in dev)
-│   └── api/              Fastify API server (port 3001 in dev)
+│   └── api/              Fastify API server (port 3002 in dev)
 ├── packages/
 │   ├── types/            Shared TypeScript types (@vibeyeeter/types)
 │   └── github-app/       GitHub App webhook handling + repo operations
 ├── services/
-│   └── tf-runner/        Terraform runner HTTP service (port 4000 in dev)
+│   └── tf-runner/        Terraform runner HTTP service (port 4001 in dev)
 ├── infra/
 │   ├── platform/         Platform's own AWS infra (EKS, ECR, S3, DynamoDB)
 │   └── modules/          Reusable Terraform modules for managed apps

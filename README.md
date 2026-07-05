@@ -100,9 +100,13 @@ same thing and won't clobber an existing `.env.local`.)
 This gets you:
 
 - **Postgres 16** running in Docker on `localhost:5432` (`docker-compose.dev.yml`), with schema applied via `db:migrate`
-- **API** on [http://localhost:3001](http://localhost:3001) — try `GET /health`
+- **API** on [http://localhost:3002](http://localhost:3002) — try `GET /health`
 - **Web** on [http://localhost:3000](http://localhost:3000)
-- **tf-runner** on [http://localhost:4000](http://localhost:4000) — try `GET /health`
+- **tf-runner** on [http://localhost:4001](http://localhost:4001) — try `GET /health`
+
+> Ports 3002/4001 (rather than the more typical 3001/4000) are used to avoid
+> colliding with other local services that may already be running on this
+> machine.
 
 ### No GitHub App or JumpCloud required
 

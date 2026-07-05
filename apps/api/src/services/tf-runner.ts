@@ -1,6 +1,6 @@
 import type { TerraformRunType } from "@vibeyeeter/types";
 
-const TF_RUNNER_URL = process.env.TF_RUNNER_URL ?? "http://tf-runner:4000";
+const TF_RUNNER_URL = process.env.TF_RUNNER_URL ?? "http://tf-runner:4001";
 
 export async function triggerTerraformRun(
   _appId: string,

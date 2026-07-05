@@ -5,7 +5,7 @@ import { planRoute } from "./routes/plan.js";
 import { applyRoute } from "./routes/apply.js";
 import { destroyRoute } from "./routes/destroy.js";
 
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? 4001);
 
 const app = Fastify({ logger: true });
 

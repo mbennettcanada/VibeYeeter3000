@@ -15,13 +15,13 @@ const jwtSecret = required("JWT_SECRET", "local-dev-secret");
 const sessionSecret = jwtSecret.padEnd(32, "0");
 
 export const config = {
-  port: Number(process.env.PORT ?? 3001),
+  port: Number(process.env.PORT ?? 3002),
   logLevel: process.env.LOG_LEVEL ?? "info",
   databaseUrl: required("DATABASE_URL", "postgres://postgres:dev@localhost:5432/vibeyeeter"),
   jwtSecret,
   sessionSecret,
   devAuthBypass: process.env.DEV_AUTH_BYPASS === "true",
-  tfRunnerUrl: process.env.TF_RUNNER_URL ?? "http://localhost:4000",
+  tfRunnerUrl: process.env.TF_RUNNER_URL ?? "http://localhost:4001",
   github: {
     appId: process.env.GITHUB_APP_ID,
     privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
