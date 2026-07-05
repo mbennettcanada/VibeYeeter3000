@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
+import { AppNav } from "@/components/AppNav";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
@@ -34,16 +35,19 @@ export default function AppOverviewPage({ params }: { params: { id: string } }) 
         }
         action={
           <div className="flex items-center gap-2">
-            <Button variant="secondary" disabled title="Not implemented yet">
-              View logs
-            </Button>
+            <Link href={`/apps/${app.id}/logs`}>
+              <Button variant="secondary">View logs</Button>
+            </Link>
             <Button variant="secondary" disabled title="Not implemented yet">
               Force redeploy
             </Button>
-            <Button variant="primary">Roll back</Button>
+            <Link href={`/apps/${app.id}/deployments`}>
+              <Button variant="primary">Roll back</Button>
+            </Link>
           </div>
         }
       />
+      <AppNav appId={app.id} />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-slate-200 bg-white px-5 py-4">
         <div className="flex items-center gap-2">

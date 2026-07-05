@@ -20,6 +20,14 @@ export function formatDuration(seconds: number | null): string {
   return `${minutes}m ${remaining}s`;
 }
 
+export function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function initials(email: string): string {
   const name = email.split("@")[0] ?? email;
   const parts = name.split(/[._-]/).filter(Boolean);

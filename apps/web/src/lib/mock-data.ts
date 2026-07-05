@@ -2,7 +2,9 @@ import type {
   App,
   Deployment,
   DeploymentStatus,
+  Pod,
   Secret,
+  Team,
   TerraformRun,
   User,
 } from "@vibeyeeter/types";
@@ -25,6 +27,13 @@ export const mockUser: User = {
   teams: ["dev"],
   isAdmin: true,
 };
+
+export const mockTeams: Team[] = [
+  { id: "9c6f7d1a-2b3e-4c5f-8a9b-1d2e3f4a5b6c", name: "Finance", slug: "finance", createdAt: daysAgo(400) },
+  { id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", name: "People Ops", slug: "people-ops", createdAt: daysAgo(400) },
+  { id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", name: "Support", slug: "support", createdAt: daysAgo(400) },
+  { id: "3c4d5e6f-7a8b-4c9d-0e1f-2a3b4c5d6e7f", name: "Operations", slug: "operations", createdAt: daysAgo(400) },
+];
 
 export const mockApps: MockApp[] = [
   {
@@ -106,6 +115,7 @@ function buildDeployments(appId: string, count: number, seed: number): Deploymen
       appId,
       imageTag: `${shas[(i + seed) % shas.length]}`,
       status,
+      type: status === "rolled_back" ? "rollback" : "deploy",
       triggeredBy: engineers[(i + seed) % engineers.length] as string,
       createdAt: hoursAgo(i * 7 + 1),
       duration: isTerminal ? 40 + ((i * 17) % 180) : null,
@@ -240,3 +250,55 @@ export const mockPlanDiff = `Terraform will perform the following actions:
     }
 
 Plan: 1 to add, 2 to change, 1 to destroy.`;
+
+function buildPods(appId: string, count: number): Pod[] {
+  const suffixes = ["7c9d4f8b6-a1b2c", "7c9d4f8b6-d3e4f", "7c9d4f8b6-9f8g7"];
+  return Array.from({ length: Math.max(count, 1) }, (_, i) => ({
+    name: `${appId.replace(/^app_/, "").replace(/_/g, "-")}-${suffixes[i % suffixes.length]}`,
+    status: i === 0 ? "Running" : "Running",
+    restarts: i % 2,
+    age: `${(i + 1) * 3}d`,
+    image: `ghcr.io/acme/${appId.replace(/^app_/, "").replace(/_/g, "-")}:latest`,
+  }));
+}
+
+export const mockPods: Record<string, Pod[]> = Object.fromEntries(
+  mockApps.map((app) => [app.id, buildPods(app.id, app.podsDesired)]),
+);
+
+export function getMockPods(appId: string): Pod[] {
+  return mockPods[appId] ?? [];
+}
+
+const logTemplates = [
+  "GET /health 200 3ms",
+  "GET /api/v1/status 200 5ms",
+  "POST /api/v1/jobs 201 42ms",
+  "Connected to database pool (12 active connections)",
+  "Cache miss for key session:9f8a2 — fetching from origin",
+  "Scheduled job \"cleanup-temp-files\" completed in 118ms",
+  "Warning: slow query detected (412ms) — SELECT * FROM events WHERE ...",
+  "GET /api/v1/users/42 200 9ms",
+  "Worker picked up job from queue \"emails\"",
+  "Health check passed",
+];
+
+export function getMockPodLogs(podName: string, lines = 100): string {
+  const now = Date.now();
+  return Array.from({ length: lines }, (_, i) => {
+    const ts = new Date(now - (lines - i) * 4000).toISOString();
+    const line = logTemplates[(i + podName.length) % logTemplates.length];
+    return `${ts} [${podName}] ${line}`;
+  }).join("\n");
+}
+
+export const mockApplyLogScript = [
+  "Acquiring state lock. This may take a few moments...",
+  "module.app.aws_ecs_service.this: Modifying...",
+  "module.app.aws_ecs_service.this: Modifications complete after 4s",
+  "module.app.aws_cloudwatch_log_group.this: Creating...",
+  "module.app.aws_cloudwatch_log_group.this: Creation complete after 1s",
+  "module.app.aws_iam_role_policy.stale: Destroying...",
+  "module.app.aws_iam_role_policy.stale: Destruction complete after 1s",
+  "Apply complete! Resources: 1 added, 2 changed, 1 destroyed.",
+];

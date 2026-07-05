@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
+import { AppNav } from "@/components/AppNav";
 import { SecretsManager } from "@/components/SecretsManager";
 import { getMockApp, getMockSecrets } from "@/lib/mock-data";
 
@@ -30,6 +31,7 @@ export default function SecretsPage({ params }: { params: { id: string } }) {
           </>
         }
       />
+      <AppNav appId={app.id} />
       <SecretsManager initialSecrets={secrets} />
     </>
   );

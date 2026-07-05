@@ -6,9 +6,13 @@ import { formatDuration, timeAgo, truncateTag } from "@/lib/format";
 export function DeploymentsTable({
   deployments,
   showActions = false,
+  onRollback,
+  rollingBackId,
 }: {
   deployments: Deployment[];
   showActions?: boolean;
+  onRollback?: (deployment: Deployment) => void;
+  rollingBackId?: string | null;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -68,8 +72,13 @@ export function DeploymentsTable({
               </td>
               {showActions && (
                 <td className="whitespace-nowrap px-4 py-3 text-right">
-                  <Button variant="secondary" className="px-2.5 py-1 text-xs">
-                    Roll back
+                  <Button
+                    variant="secondary"
+                    className="px-2.5 py-1 text-xs"
+                    onClick={() => onRollback?.(deployment)}
+                    disabled={!onRollback || rollingBackId === deployment.id}
+                  >
+                    {rollingBackId === deployment.id ? "Rolling back…" : "Roll back"}
                   </Button>
                 </td>
               )}
