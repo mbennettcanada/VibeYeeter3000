@@ -3,11 +3,13 @@ import type {
   GetAppResponse,
   CreateAppRequest,
   CreateAppResponse,
+  UpdateAppRequest,
+  UpdateAppResponse,
   ListDeploymentsResponse,
   RollbackDeploymentResponse,
   ListSecretsResponse,
-  PutSecretRequest,
-  PutSecretResponse,
+  CreateSecretRequest,
+  CreateSecretResponse,
   ListTerraformRunsResponse,
   CreateTerraformRunRequest,
   CreateTerraformRunResponse,
@@ -26,6 +28,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     throw new Error(`API request failed: ${response.status} ${path}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -51,6 +57,14 @@ export function createApp(body: CreateAppRequest): Promise<CreateAppResponse> {
   return apiFetch("/apps", { method: "POST", body: JSON.stringify(body) });
 }
 
+export function updateApp(id: string, body: UpdateAppRequest): Promise<UpdateAppResponse> {
+  return apiFetch(`/apps/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function deleteApp(id: string): Promise<void> {
+  return apiFetch(`/apps/${id}`, { method: "DELETE" });
+}
+
 export function listDeployments(appId: string): Promise<ListDeploymentsResponse> {
   return apiFetch(`/apps/${appId}/deployments`);
 }
@@ -66,15 +80,15 @@ export function listSecrets(appId: string): Promise<ListSecretsResponse> {
   return apiFetch(`/apps/${appId}/secrets`);
 }
 
-export function putSecret(
+export function createSecret(
   appId: string,
-  key: string,
-  body: PutSecretRequest,
-): Promise<PutSecretResponse> {
-  return apiFetch(`/apps/${appId}/secrets/${key}`, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
+  body: CreateSecretRequest,
+): Promise<CreateSecretResponse> {
+  return apiFetch(`/apps/${appId}/secrets`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deleteSecret(appId: string, key: string): Promise<void> {
+  return apiFetch(`/apps/${appId}/secrets/${key}`, { method: "DELETE" });
 }
 
 export function listTerraformRuns(appId: string): Promise<ListTerraformRunsResponse> {

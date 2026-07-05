@@ -27,8 +27,20 @@ export interface GetAppResponse {
 export interface CreateAppRequest {
   name: string;
   teamId: string;
+  subdomain: string;
+  repoUrl: string;
 }
 export interface CreateAppResponse {
+  app: App;
+}
+
+// PATCH /apps/:id
+export interface UpdateAppRequest {
+  name?: string;
+  subdomain?: string;
+  repoUrl?: string;
+}
+export interface UpdateAppResponse {
   app: App;
 }
 
@@ -52,11 +64,12 @@ export interface ListSecretsResponse {
   secrets: Secret[];
 }
 
-// PUT /apps/:id/secrets/:key
-export interface PutSecretRequest {
+// POST /apps/:id/secrets
+export interface CreateSecretRequest {
+  key: string;
   value: string;
 }
-export interface PutSecretResponse {
+export interface CreateSecretResponse {
   secret: Secret;
 }
 

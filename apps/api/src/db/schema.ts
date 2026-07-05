@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, integer, uuid, boolean, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  uuid,
+  boolean,
+  primaryKey,
+  unique,
+} from "drizzle-orm/pg-core";
 
 export const teams = pgTable("teams", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -16,8 +25,10 @@ export const apps = pgTable("apps", {
     .references(() => teams.id),
   repoUrl: text("repo_url").notNull(),
   namespace: text("namespace").notNull(),
+  subdomain: text("subdomain").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const deployments = pgTable("deployments", {
@@ -48,6 +59,26 @@ export const tfRuns = pgTable("tf_runs", {
   planDiff: text("plan_diff"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Secret VALUES are never stored here — see CLAUDE.md "Secrets — never log,
+// never return values". This table only tracks which keys exist per app so
+// the dashboard can list/manage them; actual values live in AWS Secrets
+// Manager (services/aws.ts, currently stubbed).
+export const secrets = pgTable(
+  "secrets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => apps.id),
+    key: text("key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    appKeyUnique: unique().on(table.appId, table.key),
+  }),
+);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),

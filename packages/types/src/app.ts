@@ -5,6 +5,7 @@ export interface App {
   teamId: string;
   repoUrl: string;
   namespace: string;
+  subdomain: string;
   createdAt: string;
   updatedAt: string;
 }
