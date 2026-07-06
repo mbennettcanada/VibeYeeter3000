@@ -218,6 +218,32 @@ API's `GET /auth/cf-callback` route reads and verifies it (see
 [Auth troubleshooting](#auth-troubleshooting) below for how that verification
 works).
 
+**Bypass rules for machine-to-machine traffic.** The wildcard Access
+application above gates every request, including callers that aren't a human
+with a browser session — GitHub webhook deliveries and CI/CD pipelines. For
+those, add explicit **Bypass** policies (Zero Trust → Access → Applications →
+[your application] → Policies) rather than trying to make them log in:
+
+5. **Webhook bypass**: add a policy for path `/webhooks/github` with action
+   **Bypass**. `POST /webhooks/github` is still secured on its own —
+   GitHub signs every delivery with `X-Hub-Signature-256` (HMAC over
+   `GITHUB_WEBHOOK_SECRET`), and the platform verifies that signature before
+   processing the payload, so bypassing Access here doesn't leave it open.
+6. **CI/CD API bypass**: add a policy for `/apps/*/deployments` (or the
+   exact path pattern your CF Access plan supports) with action **Bypass**.
+   `POST /apps/:id/deployments` is what a managed app's deploy workflow
+   calls using a `vyt_`-prefixed API token issued from Settings → API
+   Tokens in the dashboard; that route is secured independently by the platform's
+   bearer-token middleware, which checks the token against the hashed
+   values in `platform_tokens`.
+7. **Principle for new machine-to-machine endpoints**: any future endpoint
+   meant to be called without a browser session needs either an explicit CF
+   Access bypass policy for its path, or a Cloudflare Access **service
+   token** configured on the caller (`CF-Access-Client-Id` /
+   `CF-Access-Client-Secret` headers) if you'd rather leave Access enforcing
+   on the path. Either way, pair it with the endpoint's own auth (signature
+   or bearer token) — don't rely on the bypass alone.
+
 ### 9. Set all required environment variables
 
 Most of these are already covered by the Secrets Manager entries in step 1
@@ -310,6 +336,18 @@ returns `503 not_configured` immediately rather than attempting verification.
 - **Local development**: set `DEV_AUTH_BYPASS=true` to skip this flow
   entirely rather than trying to stand up Access locally — every request is
   attached a fake local admin user instead.
+
+**GitHub webhooks or CI/CD deploy calls returning a CF Access login page (HTML)
+instead of a JSON response:** this means the CF Access **Bypass** policy for
+that path either doesn't exist or doesn't match. GitHub webhook deliveries
+(`POST /webhooks/github`) and CI/CD calls to `POST /apps/:id/deployments`
+carry no browser session and no `CF_Authorization` cookie — they rely
+entirely on the Bypass policies from step 8 to reach the platform at all.
+Check Zero Trust → Access → Applications → [your application] → Policies for
+a Bypass rule matching the exact path, and confirm the path pattern actually
+matches (e.g. `/apps/*/deployments` needs to match the app's specific UUID
+segment). Once the request reaches the platform, it's the endpoint's own
+signature/token check — not CF Access — that authorizes it.
 
 ---
 

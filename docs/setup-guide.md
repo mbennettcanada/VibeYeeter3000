@@ -150,6 +150,43 @@ Without these two set, the platform still tracks each app's domain in its own
 database, but skips actually creating the CNAME record — you'd need to create
 it manually.
 
+### 4c. Bypass rules for machine-to-machine traffic
+
+CF Access gates every request to `*.<PLATFORM_DOMAIN>` behind an interactive
+login, which breaks any caller that isn't a human with a browser session —
+GitHub's webhook deliveries and CI/CD pipelines calling the API directly.
+Add explicit **Bypass** policies for these routes so Access lets the request
+through untouched and the platform's own auth (below) handles it instead:
+
+1. **Webhook bypass.** In **Zero Trust → Access → Applications → [your
+   application] → Policies**, add a policy scoped to path
+   `/webhooks/github` with action **Bypass**. This endpoint
+   (`POST /webhooks/github`) is still secured independently — GitHub signs
+   every delivery with an `X-Hub-Signature-256` HMAC using
+   `GITHUB_WEBHOOK_SECRET`, and the platform verifies that signature before
+   processing the payload, so bypassing CF Access here does not leave it
+   open.
+2. **CI/CD API bypass.** Routes called by CI/CD systems using `vyt_`-
+   prefixed API tokens (issued from Settings → API Tokens, see section 8)
+   also need to bypass CF Access, since those callers have no browser
+   session to authenticate. At minimum this covers
+   `POST /apps/:id/deployments` (the route a managed app's deploy workflow
+   hits to register a new deployment) — add a bypass policy for
+   `/apps/*/deployments` (or the closest path pattern your CF Access plan
+   supports). This route is secured independently by the platform's own
+   bearer-token middleware, which validates the `vyt_` token against the
+   hashed tokens stored in the `platform_tokens` table.
+3. **General principle.** Any future endpoint meant to be called machine-
+   to-machine (no browser, no CF Access login) needs one of two things
+   before it'll work: an explicit CF Access **Bypass** policy for its path
+   (as above), or a **Cloudflare Access service token** configured on the
+   caller (sent via `CF-Access-Client-Id` / `CF-Access-Client-Secret`
+   headers) if you'd rather keep Access enforcing on the path but let a
+   trusted caller through it. Either way, never rely on the endpoint being
+   "hard to guess" — pair the bypass with the endpoint's own auth
+   (signature verification, bearer token, etc.), the same way the two
+   routes above do.
+
 ---
 
 ## 5. Database setup
