@@ -99,9 +99,10 @@ aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_ID --secr
 aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_PRIVATE_KEY --secret-string "<base64-encoded PEM>"
 aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_APP_INSTALLATION_ID --secret-string "<installation id>"
 aws secretsmanager create-secret --name vibeyeeter/platform/GITHUB_WEBHOOK_SECRET --secret-string "<webhook HMAC secret>"
-aws secretsmanager create-secret --name vibeyeeter/platform/SAML_ENTITY_ID --secret-string "<SP entity id>"
-aws secretsmanager create-secret --name vibeyeeter/platform/SAML_IDP_SSO_URL --secret-string "<JumpCloud SSO URL>"
-aws secretsmanager create-secret --name vibeyeeter/platform/SAML_IDP_CERT --secret-string "<JumpCloud IdP certificate PEM>"
+aws secretsmanager create-secret --name vibeyeeter/platform/CF_ACCESS_TEAM_DOMAIN --secret-string "<yourteam.cloudflareaccess.com>"
+aws secretsmanager create-secret --name vibeyeeter/platform/CF_ACCESS_AUD --secret-string "<Access application AUD tag>"
+aws secretsmanager create-secret --name vibeyeeter/platform/CF_API_TOKEN --secret-string "<Cloudflare DNS-edit API token>"
+aws secretsmanager create-secret --name vibeyeeter/platform/CF_ZONE_ID --secret-string "<Cloudflare zone id>"
 aws secretsmanager create-secret --name vibeyeeter/platform/TF_RUNNER_DATABASE_URL --secret-string "<postgres-url>"
 ```
 
@@ -190,16 +191,32 @@ DATABASE_URL=<platform-postgres-url> pnpm --filter @vibeyeeter/api db:migrate
 9. Note the App ID → `GITHUB_APP_ID`
 10. Install the app on the `your-org` org → note the Installation ID → `GITHUB_APP_INSTALLATION_ID`
 
-### 8. Configure JumpCloud SAML
+### 8. Configure Cloudflare Access
 
-1. In JumpCloud admin: Applications → Add Application → Custom SAML App
-2. Display name: `VibeYeeter3000`
-3. SP Entity ID: `https://vibeyeeter.internal.yourcompany.com/saml/metadata`
-4. ACS URL: `https://vibeyeeter.internal.yourcompany.com/saml/callback`
-5. Download IdP metadata XML → extract the certificate → set as `JUMPCLOUD_SAML_CERT`
-6. Attribute mappings:
-   - `email` → user email
-   - `groups` → user's JumpCloud group names
+The platform authenticates operators via Cloudflare Zero Trust Access, not a
+local login form — Access gates the request before it ever reaches the app,
+then the API verifies the resulting JWT.
+
+1. In the Cloudflare dashboard: **Zero Trust → Access → Applications → Add
+   an application → Self-hosted**.
+2. Application domain: `*.internal.yourcompany.com` (the wildcard covers the
+   platform dashboard/API and every per-app subdomain — this is also what
+   `infra/cluster/cloudflare.tf` provisions as
+   `cloudflare_access_application.apps_wildcard` if you're using the bundled
+   OpenTofu).
+3. Add a policy scoped to your identity provider (e.g. an Access group tied
+   to Google Workspace) — replace the bundled stub "allow everyone" policy
+   (`cloudflare_access_policy.apps_wildcard_stub`) before this gates a real
+   deployment.
+4. From the application's Overview tab, note:
+   - **Team domain** (e.g. `yourteam.cloudflareaccess.com`) → `CF_ACCESS_TEAM_DOMAIN`
+   - **Application Audience (AUD) tag** → `CF_ACCESS_AUD`
+
+No callback/ACS URL registration is needed — Cloudflare sets a
+`CF_Authorization` cookie automatically once a user authenticates, and the
+API's `GET /auth/cf-callback` route reads and verifies it (see
+[Auth troubleshooting](#auth-troubleshooting) below for how that verification
+works).
 
 ### 9. Set all required environment variables
 
@@ -222,10 +239,13 @@ GITHUB_APP_INSTALLATION_ID=<installation id>
 GITHUB_WEBHOOK_SECRET=<webhook HMAC secret>
 GITHUB_ORG=your-org
 
-# JumpCloud SAML
-JUMPCLOUD_SAML_CERT=<IdP certificate PEM>
-SAML_SP_ENTITY_ID=https://vibeyeeter.internal.yourcompany.com/saml/metadata
-SAML_CALLBACK_URL=https://vibeyeeter.internal.yourcompany.com/saml/callback
+# Cloudflare Access — verifies the CF_Authorization cookie JWT
+CF_ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
+CF_ACCESS_AUD=<Access application AUD tag>
+
+# Cloudflare DNS — creates/deletes per-app subdomain records
+CF_API_TOKEN=<DNS-edit API token>
+CF_ZONE_ID=<zone id for PLATFORM_DOMAIN>
 
 AWS_REGION=us-east-1
 TF_RUNNER_URL=http://tf-runner:4001
@@ -244,6 +264,52 @@ TOFU_BIN=tofu     # or path to opentofu binary if not on PATH
 LOG_LEVEL=info
 PORT=4001
 ```
+
+---
+
+## Auth troubleshooting
+
+The platform does not run its own login form. Cloudflare Zero Trust Access
+sits in front of the dashboard and API, gates every request to
+`*.<PLATFORM_DOMAIN>` against the policy configured in step 8 above, and, on
+success, sets a `CF_Authorization` cookie containing a signed JWT before
+forwarding the request on. `GET /auth/cf-callback`
+(`apps/api/src/routes/auth.ts`) is what the platform itself does with that
+cookie:
+
+1. Reads the `CF_Authorization` cookie. No cookie → redirect to
+   `${WEB_APP_URL}/auth/error`.
+2. Verifies the JWT against Cloudflare's JWKS endpoint
+   (`https://<CF_ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`), checking:
+   - **issuer** = `https://<CF_ACCESS_TEAM_DOMAIN>`
+   - **audience** = `CF_ACCESS_AUD`
+3. Extracts `email` from the verified payload, upserts a `users` row, and
+   sets the platform's own session cookie.
+4. Redirects to `WEB_APP_URL`. Any verification failure (bad signature,
+   wrong issuer/audience, missing email claim) redirects to `/auth/error`
+   instead and logs the error.
+
+If `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` is unset, `/auth/cf-callback`
+returns `503 not_configured` immediately rather than attempting verification.
+
+**Users bounced to `/auth/error`:**
+- Check API logs for the underlying `jwtVerify` error first —
+  `request.log.error(error)` logs it before redirecting.
+- **Wrong team domain**: `CF_ACCESS_TEAM_DOMAIN` must be exactly the Zero
+  Trust team domain with no `https://` prefix and no trailing slash — it's
+  used verbatim to build both the JWKS URL and the expected `issuer`.
+- **Wrong AUD**: `CF_ACCESS_AUD` must be the AUD tag from the *specific*
+  Access application gating the hostname being hit. Each Access application
+  has its own AUD; a copy-pasted AUD from a different application (e.g. a
+  per-app one instead of the platform wildcard) fails audience verification
+  even though the cookie is otherwise valid.
+- **No `CF_Authorization` cookie at all**: the request likely bypassed
+  Cloudflare Access entirely (e.g. hitting the origin directly instead of
+  through the `*.<PLATFORM_DOMAIN>` hostname, or a misconfigured/missing
+  Access application for that hostname).
+- **Local development**: set `DEV_AUTH_BYPASS=true` to skip this flow
+  entirely rather than trying to stand up Access locally — every request is
+  attached a fake local admin user instead.
 
 ---
 
@@ -407,10 +473,17 @@ After restoring, update the app's `DATABASE_URL` secret to point to the restored
 
 ## Adding a new team
 
-1. Create a JumpCloud group named `team-<slug>`
-2. In the platform admin UI: Teams → Add Team → enter slug and display name
-3. Assign users to the JumpCloud group
-4. Users can now log into the platform and see/create apps under that team
+1. In the platform admin UI: Settings → Teams → Add Team → enter a name and
+   a lowercase-hyphenated slug (`POST /settings/teams`).
+2. Optionally map an external identity group to the team via
+   `POST /settings/teams/:id/groups` (`groupName`) — this is stored for
+   future group-based access but is not yet read from the Cloudflare Access
+   JWT: `/auth/cf-callback` currently only extracts the user's `email`
+   claim, so team membership isn't auto-assigned from a Cloudflare Access
+   group today.
+3. Users authenticate via Cloudflare Access (see step 8 /
+   [Auth troubleshooting](#auth-troubleshooting)) — their platform user
+   record is created automatically on first login by email.
 
 ---
 
