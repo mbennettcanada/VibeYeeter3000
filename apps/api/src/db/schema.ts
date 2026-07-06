@@ -152,6 +152,18 @@ export const teamExternalGroups = pgTable("team_external_groups", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Platform-wide config, editable from /settings/config so admins don't need
+// server SSH access to edit .env files. Non-secret values are stored as
+// plaintext; secret values (isSecret) are encrypted at the application layer
+// (see lib/crypto.ts) and never returned in API responses.
+export const platformConfig = pgTable("platform_config", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  isSecret: boolean("is_secret").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id),
+});
+
 // Only a salted hash of the token is stored — see CLAUDE.md "Secrets — never
 // log, never return values" for the same principle applied here. The plain
 // token is shown to the caller exactly once, at creation time.

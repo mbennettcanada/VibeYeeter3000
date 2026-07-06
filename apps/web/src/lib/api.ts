@@ -35,6 +35,9 @@ import type {
   ListAllDomainsResponse,
   CreateDomainRequest,
   CreateDomainResponse,
+  ListPlatformConfigResponse,
+  UpdatePlatformConfigRequest,
+  UpdatePlatformConfigResponse,
 } from "@vibeyeeter/types";
 import { getCfAccessLoginUrl } from "./cf-access";
 
@@ -228,4 +231,15 @@ export function createAppDomain(
 
 export function deleteAppDomain(appId: string, domainId: string): Promise<void> {
   return apiFetch(`/apps/${appId}/domains/${domainId}`, { method: "DELETE" });
+}
+
+export function listPlatformConfig(): Promise<ListPlatformConfigResponse> {
+  return apiFetch("/settings/config");
+}
+
+export function updatePlatformConfig(
+  key: string,
+  body: UpdatePlatformConfigRequest,
+): Promise<UpdatePlatformConfigResponse> {
+  return apiFetch(`/settings/config/${key}`, { method: "PUT", body: JSON.stringify(body) });
 }

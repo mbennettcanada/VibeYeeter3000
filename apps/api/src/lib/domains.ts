@@ -27,7 +27,7 @@ export async function addDomainToApp(
   }
 
   const target = ingressTarget();
-  if (!hasCloudflareDnsConfig || !target) {
+  if (!hasCloudflareDnsConfig() || !target) {
     logger.warn(
       `Cloudflare DNS is not configured — skipped DNS record creation for ${hostname}. Domain left in "pending" status.`,
     );

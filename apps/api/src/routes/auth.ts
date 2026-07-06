@@ -36,7 +36,7 @@ async function upsertUser(email: string) {
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/auth/cf-callback", async (request, reply) => {
-    if (!hasCfAccessConfig) {
+    if (!hasCfAccessConfig()) {
       reply.code(503).send({ error: "not_configured", detail: "Cloudflare Access is not configured" });
       return;
     }

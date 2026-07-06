@@ -8,6 +8,7 @@ import type { Team, TeamWithDetail } from "./team.js";
 import type { User } from "./user.js";
 import type { ApiToken } from "./token.js";
 import type { AppDomain, AppDomainWithApp } from "./domain.js";
+import type { PlatformConfigItem } from "./platform-config.js";
 
 export interface ApiErrorResponse {
   error: string;
@@ -189,4 +190,17 @@ export interface CreateDomainRequest {
 }
 export interface CreateDomainResponse {
   domain: AppDomain;
+}
+
+// GET /settings/config
+export interface ListPlatformConfigResponse {
+  config: PlatformConfigItem[];
+}
+
+// PUT /settings/config/:key
+export interface UpdatePlatformConfigRequest {
+  value: string;
+}
+export interface UpdatePlatformConfigResponse {
+  config: PlatformConfigItem;
 }

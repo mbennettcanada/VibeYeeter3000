@@ -7,6 +7,7 @@ const TABS = [
   { href: "/settings/teams", label: "Teams" },
   { href: "/settings/tokens", label: "API Tokens" },
   { href: "/settings/domains", label: "Domains" },
+  { href: "/settings/config", label: "Platform Config" },
 ];
 
 export function SettingsNav() {

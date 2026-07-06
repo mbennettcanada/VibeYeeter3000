@@ -1,5 +1,6 @@
 import "./env.js";
 import { isKubernetesConfigured } from "./services/kubernetes.js";
+import { decryptValue } from "./lib/crypto.js";
 
 function required(name: string, fallback: string): string {
   const value = process.env[name];
@@ -61,6 +62,10 @@ export const config = {
     apiToken: process.env.CF_API_TOKEN,
     zoneId: process.env.CF_ZONE_ID,
   },
+  // AES-256-GCM key (32-byte hex) used to encrypt sensitive platform_config
+  // values (e.g. CF_API_TOKEN) at rest. If unset, those values are stored in
+  // plaintext instead — see logOptionalIntegrationWarnings.
+  configEncryptionKey: process.env.CONFIG_ENCRYPTION_KEY,
 };
 
 export const hasGithubAppConfig = Boolean(
@@ -71,9 +76,43 @@ export const hasGithubAppConfig = Boolean(
     config.github.org,
 );
 
-export const hasCfAccessConfig = Boolean(config.cfAccess.teamDomain && config.cfAccess.aud);
+// Functions (not consts) because config.cfAccess / config.cloudflare can be
+// mutated in place by reloadConfig() after a /settings/config update — a
+// const captured at import time would go stale.
+export function hasCfAccessConfig(): boolean {
+  return Boolean(config.cfAccess.teamDomain && config.cfAccess.aud);
+}
 
-export const hasCloudflareDnsConfig = Boolean(config.cloudflare.apiToken && config.cloudflare.zoneId);
+export function hasCloudflareDnsConfig(): boolean {
+  return Boolean(config.cloudflare.apiToken && config.cloudflare.zoneId);
+}
+
+// Reads a platform config value: DB override first (decrypting if the row is
+// marked secret), falling back to the env var of the same name. Uses dynamic
+// imports for the db/schema modules since db/client.ts imports `config` from
+// this module at its own top level — a static import here would form a
+// circular binding that isn't initialized yet at load time.
+export async function getConfig(key: string): Promise<string | undefined> {
+  const { db } = await import("./db/client.js");
+  const { platformConfig } = await import("./db/schema.js");
+  const { eq } = await import("drizzle-orm");
+
+  const [row] = await db.select().from(platformConfig).where(eq(platformConfig.key, key)).limit(1);
+  if (!row) {
+    return process.env[key];
+  }
+  return row.isSecret ? decryptValue(row.value, config.configEncryptionKey) : row.value;
+}
+
+// Re-reads all DB-backed platform config and merges it into the in-memory
+// config object so a /settings/config update takes effect without a restart.
+export async function reloadConfig(): Promise<void> {
+  config.platformDomain = await getConfig("PLATFORM_DOMAIN");
+  config.cfAccess.teamDomain = await getConfig("CF_ACCESS_TEAM_DOMAIN");
+  config.cfAccess.aud = await getConfig("CF_ACCESS_AUD");
+  config.cloudflare.apiToken = await getConfig("CF_API_TOKEN");
+  config.cloudflare.zoneId = await getConfig("CF_ZONE_ID");
+}
 
 export function logOptionalIntegrationWarnings(logger: {
   warn: (msg: string) => void;
@@ -94,15 +133,21 @@ export function logOptionalIntegrationWarnings(logger: {
     );
   }
 
-  if (!hasCfAccessConfig) {
+  if (!hasCfAccessConfig()) {
     logger.warn(
       "Cloudflare Access is not configured (CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD) — /auth/cf-callback will not function. Use DEV_AUTH_BYPASS=true for local development.",
     );
   }
 
-  if (!hasCloudflareDnsConfig) {
+  if (!hasCloudflareDnsConfig()) {
     logger.warn(
       "Cloudflare DNS is not configured (CF_API_TOKEN / CF_ZONE_ID) — domain records will be tracked in the database but DNS records will not be created.",
+    );
+  }
+
+  if (!config.configEncryptionKey) {
+    logger.warn(
+      "CONFIG_ENCRYPTION_KEY is not set — sensitive platform config values (e.g. CF_API_TOKEN) set via /settings/config will be stored in plaintext. Set a 32-byte hex key in production.",
     );
   }
 
