@@ -8,7 +8,7 @@ This guide walks through registering a new application with VibeYeeter3000.
 
 - A GitHub repo under the `your-org` org (or a repo the `vibeyeeter-bot` GitHub App has access to)
 - The repo must have a `main` branch
-- You must be logged into the platform with a JumpCloud account that belongs to the team you're registering the app under
+- You must be logged into the platform (via Cloudflare Access) with an account that belongs to the team you're registering the app under
 - An admin must have pre-created your team if it doesn't exist yet
 
 ---
@@ -25,6 +25,11 @@ When you register an app (`POST /apps`), the platform:
    - Creates a Namespace: `vibeyeeter-<appId>` (where `<appId>` is the app's UUID)
    - Creates a ClusterIP Service named `app` (port 3000)
    - Creates an nginx Ingress for `<subdomain>.internal`
+4. Assigns the app's public domain: creates an `app_domains` row for
+   `<slug>.<PLATFORM_DOMAIN>` and, if `CF_API_TOKEN`/`CF_ZONE_ID` are
+   configured, creates the corresponding Cloudflare DNS CNAME record. Without
+   those set, the domain is still tracked in the database, but the CNAME must
+   be created manually (see Settings → Domains, or the app's Domains tab).
 
 If GitHub App or Kubernetes is not configured, the registration still succeeds and the
 response includes a `warnings` array describing what was skipped. This allows local
@@ -35,7 +40,10 @@ development without all integrations wired up.
 - ExternalSecret resource (syncs from `/vibeyeeter/<team>/<app>/` in AWS Secrets Manager)
 - ServiceAccount with IRSA annotation
 - NetworkPolicy (deny cross-namespace traffic)
-- Cloudflare Access policy for the app subdomain
+
+The app's public hostname is gated by the platform's single wildcard
+Cloudflare Access application (`*.<PLATFORM_DOMAIN>`) — no per-app Access
+policy is created separately.
 
 ---
 

@@ -8,7 +8,8 @@ VibeYeeter3000 is three systems working together:
 ┌─────────────────────────────────────────────────────────────┐
 │                     Control Plane                           │
 │   Next.js UI + Fastify API   (vibeyeeter-system namespace)  │
-│   JumpCloud SAML auth        Cloudflare Access ingress      │
+│   Cloudflare Access JWT auth (both platform login and      │
+│   per-app ingress use the same Access application)          │
 └────────────┬────────────────────────────┬───────────────────┘
              │                            │
      GitHub App API               Kubernetes API + AWS APIs
@@ -63,15 +64,16 @@ Key pages:
 - `/apps/[id]/terraform` — tf plan/apply history
 
 **API** (`apps/api`): Fastify, port 3002. Handles:
-- JumpCloud SAML assertion processing and session management (`/saml/*`)
+- Cloudflare Access JWT verification and session management (`GET /auth/cf-callback`)
 - GitHub App webhook ingestion (`POST /webhooks/github`)
 - Kubernetes API calls: namespace/service/ingress provisioning, pod listing, logs, deployments
 - AWS API calls: Secrets Manager CRUD (stubbed locally)
 - OpenTofu runner orchestration via HTTP (`tf-runner`)
 - App registration and lifecycle management
+- Platform config (`/settings/config`) and per-app domain/DNS management (`/settings/domains`)
 
 All routes require a valid session cookie (or `DEV_AUTH_BYPASS=true` for local dev)
-except `GET /health` and `/saml/*`.
+except `GET /health` and `/auth/*`.
 
 ### GitHub App (`vibeyeeter-bot`)
 
@@ -186,30 +188,49 @@ migrations:
 
 ```
 User browser
-  → Cloudflare Access (validates JumpCloud session)
+  → Cloudflare Access (identity provider login, e.g. Google via Zero Trust)
     → AWS ALB (HTTPS termination, cert from ACM)
       → ingress-nginx (Kubernetes ingress controller)
         → App pod
 ```
 
-Every app gets a Cloudflare Access policy on registration. Policy requires membership in the appropriate JumpCloud group.
+A single Cloudflare Access application gates the platform's wildcard domain
+(`*.<PLATFORM_DOMAIN>`), covering both the platform dashboard/API and every
+per-app subdomain. Access requires the configured identity provider login,
+then sets a `CF_Authorization` cookie and forwards the request on.
 
-Apps receive the `CF-Access-JWT-Assertion` header from Cloudflare, encoding the authenticated user's identity (email, groups). Apps can use this for application-level authorization without implementing their own OAuth flow.
+Apps receive the `CF-Access-JWT-Assertion` header from Cloudflare, encoding the authenticated user's identity (email). Apps can use this for application-level authorization without implementing their own OAuth flow.
 
 ### Platform auth
 
-1. User visits platform UI → redirected to JumpCloud SSO
-2. JumpCloud issues SAML assertion with user's groups
-3. Platform API validates assertion (`/saml/callback`), creates session cookie
-4. User's JumpCloud groups determine which teams and apps they can see
-
-**Group conventions:**
-- `vibeyeeter-admin` → can see and manage all teams and apps
-- `team-<slug>` → can see and manage apps under that team
+1. User visits the platform UI → Cloudflare Access intercepts and requires
+   identity provider login (no platform-hosted login form)
+2. On success, Access sets a `CF_Authorization` cookie containing a signed JWT
+   and forwards the request to the platform
+3. `GET /auth/cf-callback` (`apps/api/src/routes/auth.ts`) reads that cookie,
+   verifies the JWT against Cloudflare's JWKS endpoint
+   (`https://<CF_ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`, checking issuer and
+   `CF_ACCESS_AUD`), extracts the user's email, upserts a `users` row, and
+   sets the platform's own session cookie
+4. Team membership is managed explicitly in the platform (Settings → Teams),
+   not derived from Cloudflare Access groups — `/auth/cf-callback` only reads
+   the `email` claim today
 
 **Local dev:** `DEV_AUTH_BYPASS=true` in `apps/api/.env.local` attaches a fake admin user
 (`{ id: "local", email: "dev@local", teams: ["dev"], isAdmin: true }`) to every request,
-bypassing SAML entirely. Never enable this in staging/production.
+bypassing Cloudflare Access entirely. Never enable this in staging/production.
+
+### Platform config and domains
+
+- **`platform_config` table**: admin-settable configuration (`/settings/config`),
+  read via `getConfig(key)` which checks the database first and falls back to
+  the equivalent environment variable. Sensitive values (currently
+  `CF_API_TOKEN`) are encrypted at rest with AES-256-GCM using
+  `CONFIG_ENCRYPTION_KEY`.
+- **`app_domains` table**: tracks each app's assigned subdomain
+  (`{slug}.{PLATFORM_DOMAIN}`, auto-assigned on app creation) and manages the
+  Cloudflare DNS CNAME record for it via the Cloudflare API. Managed from
+  `/settings/domains` (platform-wide) and each app's Domains tab.
 
 ### Secrets
 
@@ -236,7 +257,8 @@ names are tracked (in the `secrets` table) so the dashboard can list/manage them
 ### Platform database
 
 The platform API uses its own PostgreSQL instance (separate from per-app databases).
-Tables: `teams`, `apps`, `deployments`, `tf_runs`, `secrets`, `users`, `team_members`.
+Tables: `teams`, `apps`, `deployments`, `tf_runs`, `secrets`, `users`, `team_members`,
+`team_external_groups`, `app_domains`, `platform_config`, `platform_tokens`.
 Schema managed via Drizzle ORM; migrations in `apps/api/src/db/migrations/`.
 
 ### CloudNative PG (production)

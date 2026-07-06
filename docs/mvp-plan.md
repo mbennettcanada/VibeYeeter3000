@@ -29,8 +29,7 @@ Everything else is post-MVP.
 - [ ] Create `vibeyeeter-system` namespace
 - [ ] S3 bucket + DynamoDB table for OpenTofu state
 - [ ] ECR lifecycle policies (keep last 50 images per repo)
-- [ ] Cloudflare Access application for platform UI
-- [ ] JumpCloud SAML app for platform auth
+- [x] Cloudflare Access application for platform UI (also gates per-app subdomains)
 
 **Monorepo scaffold**
 - [x] pnpm workspace with `apps/web`, `apps/api`, `packages/types`, `packages/github-app`, `services/tf-runner`
@@ -127,13 +126,24 @@ Everything else is post-MVP.
 
 ### Week 8: Auth + Polish + Hardening
 
-**JumpCloud SAML**
-- [x] SAML route scaffold (`/saml/metadata`, `/saml/callback`) in `routes/saml.ts`
-- [ ] Full assertion validation and session creation
-- [ ] Group extraction: map JumpCloud groups to platform teams
+**Platform auth (superseded plan)**
+
+The original plan below (JumpCloud SAML) was replaced post-MVP with Cloudflare
+Access JWT auth — see `docs/architecture.md#platform-auth` and
+`docs/runbook.md#auth-troubleshooting` for the current implementation.
+
+- [x] ~~SAML route scaffold (`/saml/metadata`, `/saml/callback`)~~ — removed;
+  replaced by `GET /auth/cf-callback` (verifies the `CF_Authorization` cookie
+  against Cloudflare's JWKS endpoint)
+- [x] Session creation on successful auth
+- [ ] Group extraction: map external identity provider groups to platform
+  teams (teams are currently managed manually via Settings → Teams;
+  `team_external_groups` exists for future group-mapping but isn't consumed
+  by the callback yet)
 
 **Cloudflare Access**
-- [ ] Platform provisions CF Access policy per app on registration (via Cloudflare API)
+- [x] Single wildcard CF Access application (`*.<PLATFORM_DOMAIN>`) gates the
+  platform UI/API and every per-app subdomain — not a per-app policy
 
 **Polish**
 - [x] Error states handled at API level (typed `{ error, detail }` responses)
@@ -178,7 +188,7 @@ Everything else is post-MVP.
 ## Definition of done
 
 MVP is complete when a non-technical user can:
-1. Log in with their JumpCloud account
+1. Log in via Cloudflare Access (their identity provider account)
 2. Register a GitHub repo they own
 3. Push to main and watch the deployment progress in the dashboard
 4. Roll back to a previous version with one click

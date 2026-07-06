@@ -23,8 +23,8 @@ place.
                           │        Control plane         │
                           │  Next.js UI  +  Fastify API   │
                           │     (vibeyeeter-system ns)    │
-                          │ JumpCloud SAML · Cloudflare    │
-                          │         Access ingress         │
+                          │   Cloudflare Access auth        │
+                          │  (JWT cookie + JWKS verify)     │
                           └───────┬───────────────┬───────┘
                                   │               │
                         GitHub App API     Kubernetes + AWS APIs
@@ -86,7 +86,7 @@ See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 | Image registry | GitHub Container Registry (ghcr.io) |
 | Secrets | AWS Secrets Manager + External Secrets Operator |
 | Ingress auth | Cloudflare Access → your SSO provider |
-| Platform auth | SAML (tested against JumpCloud) |
+| Platform auth | Cloudflare Access JWT (`CF_Authorization` cookie, verified via JWKS) |
 | GitHub integration | A GitHub App you register for your org |
 
 ---
@@ -100,10 +100,11 @@ Running this yourself requires:
 - **A GitHub organization** you control, and a **GitHub App** registered on
   it (see [docs/runbook.md](docs/runbook.md) for exact setup steps) — this is
   how the platform creates repos and receives deploy webhooks
-- **A SAML identity provider** (JumpCloud, Okta, etc.) for platform login —
-  or set `DEV_AUTH_BYPASS=true` and skip this for local development
-- **A Cloudflare account** managing the DNS zone you'll use for app
-  subdomains, for Cloudflare Access to gate ingress
+- **A Cloudflare account** with Zero Trust (Access) and a DNS zone for app
+  subdomains — Cloudflare Access gates platform login and per-app ingress,
+  and the platform manages DNS records for each app's subdomain via the
+  Cloudflare API. Or set `DEV_AUTH_BYPASS=true` and skip this for local
+  development
 - `kubectl`, `tofu` (OpenTofu), `helm`, `docker`, and `pnpm` on your machine
 
 None of the above are required to run the platform locally against Rancher
@@ -150,8 +151,8 @@ pnpm dev
 - API: [http://localhost:3002/health](http://localhost:3002/health)
 - tf-runner: [http://localhost:4001/health](http://localhost:4001/health)
 
-GitHub App and SAML credentials are left blank in local dev; the API logs a
-warning and those routes no-op instead of crashing. To exercise real
+GitHub App and Cloudflare credentials are left blank in local dev; the API
+logs a warning and those routes no-op instead of crashing. To exercise real
 Kubernetes provisioning locally, install
 [Rancher Desktop](https://rancherdesktop.io/) — see
 [docs/runbook.md](docs/runbook.md#local-kubernetes-testing-with-rancher-desktop).
@@ -204,6 +205,8 @@ vibeyeeter3000/
 
 ## Documentation
 
+- [Setup guide](docs/setup-guide.md) — standing up the platform from scratch,
+  including Cloudflare Access, DNS, and environment variables
 - [Architecture](docs/architecture.md) — full system design
 - [Runbook](docs/runbook.md) — operational procedures, including platform bootstrap
 - [App onboarding](docs/onboarding.md) — registering a new application

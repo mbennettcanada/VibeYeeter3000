@@ -15,7 +15,7 @@ deploy applications using AI coding agents. The platform:
 - Manages Kubernetes namespaces, services, ingresses, and deployments per app
 - Runs OpenTofu for app-specific infrastructure
 - Provides a web dashboard for deployments, rollbacks, migrations, and secrets
-- Integrates with JumpCloud (SSO) and Cloudflare Access (ingress auth)
+- Integrates with Cloudflare Access for both platform login and ingress auth
 
 See `docs/architecture.md` for the full system design.
 
@@ -86,16 +86,19 @@ Minimum Node version: 20. Package manager: pnpm.
 ### `apps/api` (Fastify, port 3002)
 
 The backend. Handles:
-- JumpCloud SAML authentication and session management (`/saml/*`)
+- Cloudflare Access JWT verification and session management (`GET /auth/cf-callback`)
 - GitHub App webhook ingestion (`POST /webhooks/github`)
 - Kubernetes API: namespace/service/ingress provisioning, pods, deployments, logs
 - AWS API: Secrets Manager CRUD (stubbed locally), S3 backup listing
 - OpenTofu runner orchestration (internal HTTP calls to `tf-runner`)
 - App registration and lifecycle management
+- Platform config (`platform_config` table, AES-256-GCM-encrypted secrets)
+- App domain/DNS management (`app_domains` table, Cloudflare DNS CNAME records)
 - Platform database (stores app registrations, deploy history, team config)
 
-All API routes require a valid session except `GET /health` and `/saml/*`.
-Set `DEV_AUTH_BYPASS=true` to skip SAML and attach a fake local admin user.
+All API routes require a valid session except `GET /health` and `/auth/*`.
+Set `DEV_AUTH_BYPASS=true` to skip Cloudflare Access and attach a fake local
+admin user.
 
 **Route summary:**
 - `GET /health`
@@ -105,8 +108,15 @@ Set `DEV_AUTH_BYPASS=true` to skip SAML and attach a fake local admin user.
 - `POST /apps/:id/deployments/:deploymentId/rollback`
 - `GET /apps/:id/secrets`, `POST /apps/:id/secrets`, `DELETE /apps/:id/secrets/:key`
 - `GET /apps/:id/terraform`, `POST /apps/:id/terraform/plan`, `POST /apps/:id/terraform/apply`
+- `GET /apps/:id/domains`, `POST /apps/:id/domains`, `DELETE /apps/:id/domains/:domainId`
 - `POST /webhooks/github`
-- `GET /saml/metadata`, `POST /saml/callback`
+- `GET /auth/cf-callback`
+- `GET /settings/config`, `PUT /settings/config/:key`
+- `GET /settings/domains`
+- `GET /settings/teams`, `POST /settings/teams`, `PATCH /settings/teams/:id`,
+  `DELETE /settings/teams/:id`, `POST /settings/teams/:id/groups`,
+  `DELETE /settings/teams/:id/groups/:groupName`
+- `GET /settings/tokens`, `POST /settings/tokens`, `DELETE /settings/tokens/:id`
 
 ### `apps/web` (Next.js 14, port 3000)
 
@@ -115,15 +125,20 @@ client components for interactivity. Calls the API via `apps/api`.
 
 Key routes:
 - `/` — dashboard (all apps for your teams)
-- `/login` — login page (redirects to JumpCloud SAML or uses bypass in dev)
+- `/login` — login page (redirects through Cloudflare Access, or uses bypass in dev)
 - `/apps/[id]` — app detail (pods, deploys, migrations, secrets, tf runs)
 - `/apps/[id]/deployments` — deploy history + rollback
 - `/apps/[id]/secrets` — secret management
 - `/apps/[id]/terraform` — tf plan/apply history
-- `/admin` — admin-only: all teams, all apps, platform config
+- `/apps/[id]/domains` — per-app domain management
+- `/settings/config` — admin-only: platform config (Cloudflare Access, DNS, etc.)
+- `/settings/domains` — admin-only: all app domains and DNS status
+- `/settings/teams` — admin-only: team management
+- `/settings/tokens` — admin-only: CI/CD API tokens
 
 Key components: `AppCard`, `DeploymentsTable`, `SecretsManager`, `PlanDiff`,
-`StatusBadge`, `StatusDot`, `PageHeader`, `Sidebar`, `EmptyState`.
+`StatusBadge`, `StatusDot`, `PageHeader`, `Sidebar`, `EmptyState`,
+`PlatformConfigManager`, `DomainsManager`, `TeamsManager`, `TokensManager`.
 
 ### `packages/types`
 
@@ -188,13 +203,25 @@ All k8s-backed API routes degrade gracefully (return `warnings`, not 500) when k
 
 ### Auth in the API
 
-All protected routes go through the `requireSession` middleware which validates
-the session cookie and attaches `request.user` (`{ id, email, teams, isAdmin }`).
+Auth is Cloudflare Access, not a platform-hosted login. `GET /auth/cf-callback`
+reads the `CF_Authorization` cookie set by Cloudflare Access, verifies the JWT
+against Cloudflare's JWKS endpoint (issuer + `CF_ACCESS_AUD`), upserts a
+`users` row keyed by email, and sets the platform's own session cookie.
 
-In local dev, `DEV_AUTH_BYPASS=true` attaches:
-`{ id: "local", email: "dev@local", teams: ["dev"], isAdmin: true }`.
+All protected routes go through the `requireSession` middleware which validates
+that session cookie and attaches `request.user` (`{ id, email, teams, isAdmin }`).
+
+In local dev, `DEV_AUTH_BYPASS=true` skips Cloudflare Access entirely and
+attaches: `{ id: "local", email: "dev@local", teams: ["dev"], isAdmin: true }`.
 
 Admin routes additionally check `request.user.isAdmin`.
+
+Routes called by machines rather than browsers (e.g. `POST
+/apps/:id/deployments` from a managed app's CI) don't go through
+`requireSession` — they use bearer-token auth (`vyt_`-prefixed tokens issued
+from `/settings/tokens`, hashed in the `platform_tokens` table) via
+`requireSessionOrToken`, and rely on a Cloudflare Access **Bypass** policy to
+reach the platform at all (see `docs/runbook.md#auth-troubleshooting`).
 
 ### Kubernetes operations
 
@@ -241,8 +268,12 @@ Tables:
 - `deployments` — deployment history per app (id, appId, imageTag, status, triggeredBy, githubDeploymentId)
 - `tf_runs` — OpenTofu plan/apply history per app (id, appId, type, status, planDiff, output)
 - `secrets` — secret key names per app (values never stored here)
-- `users` — platform users (synced from JumpCloud SAML assertions)
+- `users` — platform users (upserted by email on Cloudflare Access login)
 - `team_members` — user ↔ team membership
+- `team_external_groups` — external identity group name ↔ team mapping (not yet read from the CF Access JWT)
+- `app_domains` — per-app hostnames, DNS/cert status; drives Cloudflare DNS CNAME management
+- `platform_config` — admin-settable config (`/settings/config`), sensitive values AES-256-GCM encrypted with `CONFIG_ENCRYPTION_KEY`
+- `platform_tokens` — hashed `vyt_`-prefixed API tokens for CI/CD bearer auth
 
 The `tf_runs` table is also read/written directly by `services/tf-runner` (which has its
 own copy of the table schema — no dependency on `apps/api`).
@@ -260,7 +291,7 @@ GITHUB_ORG=                          # GitHub org repos are provisioned into —
 # Platform identity (no defaults — environment-specific)
 PLATFORM_DOMAIN=                     # Base domain for per-app subdomains, e.g. internal.yourcompany.com
 PLATFORM_URL=                        # Platform's own URL, e.g. https://vibeyeeter.internal.yourcompany.com
-                                      # Used for SAML defaults and as the deployment webhook target
+                                      # Used as the deployment webhook target
                                       # templated into generated app deploy workflows.
 GHCR_ORG=                            # GitHub org used for container image pushes (defaults to GITHUB_ORG)
 
@@ -270,10 +301,12 @@ GITHUB_APP_PRIVATE_KEY=              # PEM private key, base64-encoded
 GITHUB_APP_INSTALLATION_ID=          # Installation ID on your GitHub org
 GITHUB_WEBHOOK_SECRET=               # Webhook HMAC secret
 
-# JumpCloud SAML (optional locally — use DEV_AUTH_BYPASS=true instead)
-JUMPCLOUD_SAML_CERT=                 # JumpCloud IdP certificate
-SAML_SP_ENTITY_ID=                   # e.g. ${PLATFORM_URL}/saml/metadata
-SAML_CALLBACK_URL=                   # e.g. ${PLATFORM_URL}/saml/callback
+# Cloudflare Access (optional locally — use DEV_AUTH_BYPASS=true instead)
+CF_ACCESS_TEAM_DOMAIN=                # Zero Trust team domain, e.g. yourteam.cloudflareaccess.com
+CF_ACCESS_AUD=                        # Application Audience (AUD) tag of the CF Access application
+CF_API_TOKEN=                         # Cloudflare API token, Zone -> DNS -> Edit, for per-app CNAME management
+CF_ZONE_ID=                           # Cloudflare zone ID for PLATFORM_DOMAIN
+CONFIG_ENCRYPTION_KEY=                # 32-byte hex AES-256-GCM key encrypting sensitive platform_config values
 
 AWS_REGION=us-east-1
 TF_RUNNER_URL=http://localhost:4001  # Internal only (http://tf-runner:4001 in cluster)
@@ -282,7 +315,7 @@ TF_RUNNER_URL=http://localhost:4001  # Internal only (http://tf-runner:4001 in c
 KUBECONFIG=                          # Override kubeconfig path if needed
 
 # Local dev only
-DEV_AUTH_BYPASS=true                 # Skip SAML; attach fake admin user. NEVER in prod.
+DEV_AUTH_BYPASS=true                 # Skip Cloudflare Access; attach fake admin user. NEVER in prod.
 
 # Optional
 LOG_LEVEL=info                       # debug | info | warn | error

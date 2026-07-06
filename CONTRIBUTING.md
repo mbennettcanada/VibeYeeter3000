@@ -6,8 +6,8 @@ they depend on.
 
 ## Running it locally
 
-You don't need AWS, a GitHub App, or a SAML provider to work on the control
-plane itself:
+You don't need AWS, a GitHub App, or a Cloudflare account to work on the
+control plane itself:
 
 ```bash
 git clone <your-fork-url>
@@ -23,9 +23,10 @@ pnpm dev
 - API: [http://localhost:3002](http://localhost:3002)
 - tf-runner: [http://localhost:4001](http://localhost:4001)
 
-`DEV_AUTH_BYPASS=true` (on by default in `apps/api/.env.example`) skips SAML
-and logs you in as a fake local admin. GitHub App and SAML credentials are
-optional locally — the API starts without them and logs a warning.
+`DEV_AUTH_BYPASS=true` (on by default in `apps/api/.env.example`) skips
+Cloudflare Access and logs you in as a fake local admin. GitHub App and
+Cloudflare credentials are optional locally — the API starts without them and
+logs a warning.
 
 To exercise real Kubernetes provisioning, install
 [Rancher Desktop](https://rancherdesktop.io/) and run `pnpm smoke-test`
