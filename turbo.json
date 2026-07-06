@@ -14,7 +14,8 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [],
+      "env": ["DATABASE_URL", "TF_RUNNER_DATABASE_URL"]
     },
     "dev": {
       "cache": false,
